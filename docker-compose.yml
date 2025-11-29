@@ -1,0 +1,140 @@
+services:
+
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--accesslog=true"
+      - "--log.level=DEBUG"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8088:8080"
+    volumes:
+      - ./letsencrypt:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.http.middlewares.cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.cors.headers.addvaryheader=true"
+    networks:
+      - app-network
+
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+    networks:
+     - app-network
+    depends_on:
+      - auth-api
+      - todos-api
+
+  auth-api:
+    container_name: auth-api
+    build:
+      context: ./auth-api
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth-api.entrypoints=websecure"
+      - "traefik.http.routers.auth-api.tls=true"
+      - "traefik.http.routers.auth-api.tls.certresolver=myresolver"
+      - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
+      - "traefik.http.middlewares.auth-api-strip.stripprefix.prefixes=/api/auth"
+      - "traefik.http.routers.auth-api.middlewares=auth-api-strip"
+    networks:
+      - app-network
+    depends_on:
+      - users-api
+
+  todos-api:
+    container_name: todos-api
+    build:
+      context: ./todos-api
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/todos`)"
+      - "traefik.http.routers.todos-api.entrypoints=websecure"
+      - "traefik.http.routers.todos-api.tls=true"
+      - "traefik.http.routers.todos-api.tls.certresolver=myresolver"
+      - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
+      - "traefik.http.middlewares.todos-api-strip.stripprefix.prefixes=/api/todos"
+      - "traefik.http.routers.todos-api.middlewares=todos-api-strip"
+    networks:
+      - app-network
+    depends_on:
+      - redis-queue
+
+  users-api:
+    container_name: users-api
+    build:
+      context: ./users-api
+    ports:
+      - "8083:8083"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users-api.entrypoints=websecure"
+      - "traefik.http.routers.users-api.tls=true"
+      - "traefik.http.routers.users-api.tls.certresolver=myresolver"
+      - "traefik.http.services.users-api.loadbalancer.server.port=8083"
+      - "traefik.http.middlewares.users-api-strip.stripprefix.prefixes=/api/users"
+      - "traefik.http.routers.users-api.middlewares=users-api-strip"
+    networks:
+      - app-network
+
+  log-message-processor:
+    build:
+      context: ./log-message-processor
+    env_file:
+      - .env
+    networks:
+      - app-network
+    depends_on:
+      - redis-queue
+
+  redis-queue:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis-data:

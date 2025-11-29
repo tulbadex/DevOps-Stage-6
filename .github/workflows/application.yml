@@ -1,0 +1,44 @@
+name: Application Deployment
+
+on:
+  push:
+    paths:
+      - 'frontend/**'
+      - 'auth-api/**'
+      - 'todos-api/**'
+      - 'users-api/**'
+      - 'log-message-processor/**'
+      - 'docker-compose.yml'
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+          
+      - name: Deploy Application
+        run: |
+          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.SERVER_IP }} << 'EOF'
+            cd /opt/hng-stage6
+            git pull origin main
+            
+            # Build Java app if changed
+            if git diff --name-only HEAD~1 HEAD | grep -q "users-api/"; then
+              cd users-api
+              ./mvnw clean package -DskipTests
+              cd ..
+            fi
+            
+            # Restart containers
+            docker-compose down
+            docker-compose up -d --build
+          EOF

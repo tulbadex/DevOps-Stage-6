@@ -1,0 +1,126 @@
+name: Infrastructure Deployment
+
+on:
+  push:
+    paths:
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+  workflow_dispatch:
+
+env:
+  TF_VAR_public_key: ${{ secrets.PUBLIC_KEY }}
+  TF_VAR_private_key_path: ${{ secrets.PRIVATE_KEY_PATH }}
+  TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+  TF_VAR_email: ${{ secrets.EMAIL }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has-changes: ${{ steps.plan.outputs.has-changes }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+          
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd infra/terraform
+          terraform plan -detailed-exitcode -out=tfplan
+          echo "has-changes=$?" >> $GITHUB_OUTPUT
+          
+      - name: Upload Plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan
+          path: infra/terraform/tfplan
+
+  drift-notification:
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    if: needs.terraform-plan.outputs.has-changes == '2'
+    steps:
+      - name: Send Drift Detection Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "🚨 Infrastructure Drift Detected - HNG Stage 6"
+          body: |
+            Infrastructure drift has been detected in the HNG Stage 6 project.
+            
+            Changes detected in Terraform plan. Manual approval required before applying changes.
+            
+            Please review the changes and approve the deployment if they are expected.
+            
+            Repository: ${{ github.repository }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: ${{ secrets.SMTP_USERNAME }}
+
+  manual-approval:
+    needs: [terraform-plan, drift-notification]
+    runs-on: ubuntu-latest
+    if: needs.terraform-plan.outputs.has-changes == '2'
+    environment: production
+    steps:
+      - name: Manual Approval Required
+        run: echo "Manual approval required for infrastructure changes"
+
+  terraform-apply:
+    needs: [terraform-plan, manual-approval]
+    runs-on: ubuntu-latest
+    if: always() && (needs.terraform-plan.outputs.has-changes == '0' || (needs.terraform-plan.outputs.has-changes == '2' && needs.manual-approval.result == 'success'))
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+      - name: Setup Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+          
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+          
+      - name: Download Plan
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-plan
+          path: infra/terraform/
+        if: needs.terraform-plan.outputs.has-changes == '2'
+          
+      - name: Terraform Apply
+        run: |
+          cd infra/terraform
+          if [ "${{ needs.terraform-plan.outputs.has-changes }}" == "2" ]; then
+            terraform apply tfplan
+          else
+            terraform apply -auto-approve
+          fi

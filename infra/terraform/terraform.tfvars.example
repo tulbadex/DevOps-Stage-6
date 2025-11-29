@@ -1,0 +1,14 @@
+aws_region       = "us-east-1"
+project_name     = "hng-stage6"
+public_key       = "ssh-rsa AAAAB3NzaC1yc2E... your-public-key"
+private_key_path = "~/.ssh/id_rsa"
+domain_name      = "your-subdomain.duckdns.org"
+email           = "your-email@example.com"
+
+# GitHub Configuration
+github_username = "your-github-username"
+repo_name = "hng-stage6"
+
+# DuckDNS Configuration (Optional)
+duckdns_subdomain = "your-subdomain"  # Without .duckdns.org
+duckdns_token = "your-duckdns-token"

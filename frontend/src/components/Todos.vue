@@ -8,7 +8,7 @@
         <div class="row align-items-center">
           <div class="col-sm-12">
             <h1 class="dashboard-title">
-              Welcome to HNG13 TODOs Dashboard
+              Welcome to HNG12 TODOs Dashboard
               <transition name="fade">
                 <small v-if="total" class="task-count">({{ total }})</small>
               </transition>
