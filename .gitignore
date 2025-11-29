@@ -1,0 +1,40 @@
+# Terraform files
+.terraform/
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup
+infra/terraform/*.tfvars
+infra/terraform/.terraform.tfstate.lock.info
+*.tfplan
+
+# Ansible files
+infra/ansible/inventory.ini
+infra/ansible/inventory
+
+# Images and other large files
+image/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+
+# Environment variables
+.env
+*.env
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
