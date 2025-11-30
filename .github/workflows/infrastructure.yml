@@ -1,20 +1,31 @@
-name: Infra pipeline
+name: Infrastructure Pipeline
 
 on:
   push:
     branches: [main]
-    paths: ['infra/terraform/**','infra/ansible/**','.github/workflows/infra.yml']
+    paths: 
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+      - '.github/workflows/infrastructure.yml'
   workflow_dispatch:
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: us-east-2
+  TF_VAR_aws_region: us-east-2
+  TF_VAR_ami_id: ami-0cb91c7de36eed2cb
+  TF_VAR_instance_type: t3.medium
+  TF_VAR_instance_name: hng-stage6-web-server
+  TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
+  TF_VAR_private_key_path: ./ssh-key.pem
+  TF_VAR_github_repo: ${{ github.server_url }}/${{ github.repository }}.git
+  TF_VAR_github_branch: ${{ github.ref_name }}
+  TF_VAR_email: ${{ secrets.EMAIL_ALERT }}
+  TF_VAR_domain: ${{ secrets.DOMAIN }}
   TF_VAR_email_ses: ${{ secrets.EMAIL_ALERT }}
-  DOMAIN: ${{ secrets.DOMAIN }}
-  DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}   # NEW
+  TF_VAR_duckdns_token: ${{ secrets.DUCKDNS_TOKEN }}
 
-# prevent two pushes from fighting
 concurrency:
-  group: infra-${{ github.ref }}
+  group: infrastructure-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -22,71 +33,296 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       drift: ${{ steps.plan.outputs.drift }}
+      server_ip: ${{ steps.apply.outputs.server_ip }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.8          # pinned
+          terraform_version: 1.9.8
+          terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: terraform init
+      - name: Create SSH key file
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ./ssh-key.pem
+          chmod 600 ./ssh-key.pem
+
+      - name: Terraform Init
         run: terraform -chdir=infra/terraform init -input=false
 
-      - name: terraform plan
+      - name: Terraform Plan (Drift Detection)
         id: plan
         run: |
           set +e
-          terraform -chdir=infra/terraform plan -detailed-exitcode -out=tfplan
+          terraform -chdir=infra/terraform plan -detailed-exitcode -out=tfplan -no-color > plan_output.txt 2>&1
           EXIT_CODE=$?
+          
           echo "exitcode=$EXIT_CODE" >> $GITHUB_OUTPUT
-          if [ $EXIT_CODE -eq 2 ]; then echo "drift=true" >> $GITHUB_OUTPUT; else echo "drift=false" >> $GITHUB_OUTPUT; fi
-          exit 0   # keep step green so mail can run
+          
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "drift=false" >> $GITHUB_OUTPUT
+            echo "No changes detected - infrastructure is up to date"
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "drift=error" >> $GITHUB_OUTPUT
+            echo "Terraform plan failed with errors"
+            cat plan_output.txt
+            exit 1
+          elif [ $EXIT_CODE -eq 2 ]; then
+            echo "drift=true" >> $GITHUB_OUTPUT
+            echo "Infrastructure drift detected - changes planned"
+          fi
+          
+          # Add plan output to job summary
+          echo "## Terraform Plan Output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat plan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: upload plan artefact
+      - name: Upload Terraform Plan
+        if: steps.plan.outputs.drift == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan
-          path: infra/terraform/tfplan
-          retention-days: 7
+          name: terraform-plan-${{ github.run_number }}
+          path: |
+            infra/terraform/tfplan
+            plan_output.txt
+          retention-days: 30
 
-      - name: send drift e-mail
+      - name: Send Drift Detection Email
         if: steps.plan.outputs.drift == 'true'
-        uses: cinotify/email-action@v1.0.0
+        uses: dawidd6/action-send-mail@v3
         with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '🚨 INFRASTRUCTURE DRIFT DETECTED - Manual Approval Required'
           to: ${{ secrets.EMAIL_ALERT }}
-          subject: 'DRIFT DETECTED – terraform plan needs approval'
+          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
           body: |
-            A terraform plan found changes. Visit ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} to approve.
+            ## 🚨 Infrastructure Drift Alert
+            
+            **Project:** HNG13 Stage 6 DevOps
+            **Repository:** ${{ github.repository }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Workflow Run:** ${{ github.run_id }}
+            
+            ### Summary
+            Infrastructure drift has been detected. The current infrastructure state differs from your Terraform configuration.
+            
+            ### What This Means
+            - Resources may have been modified outside of Terraform
+            - New resources may need to be created
+            - Existing resources may need updates
+            - Manual approval is required before applying changes
+            
+            ### Required Actions
+            1. **Review the changes** in the GitHub Actions workflow
+            2. **Download the Terraform plan** from the artifacts
+            3. **Approve or reject** the changes
+            4. **Investigate** why drift occurred to prevent future issues
+            
+            ### Links
+            - [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - [Download Terraform Plan](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)
+            
+            ### Security Note
+            If you did not expect these changes, this could indicate:
+            - Unauthorized access to your AWS account
+            - Manual changes made outside of the CI/CD process
+            - Configuration drift that needs immediate attention
+            
+            **Please review and approve/reject within 24 hours.**
+            
+            ---
+            *This is an automated message from your DevOps pipeline.*
+            *Generated at: ${{ github.event.head_commit.timestamp }}*
 
-      - name: hold for manual approval
+      - name: Wait for Manual Approval
         if: steps.plan.outputs.drift == 'true'
         uses: trstringer/manual-approval@v1
         with:
           secret: ${{ github.TOKEN }}
           approvers: ${{ github.repository_owner }}
           minimum-approvals: 1
+          timeout-minutes: 1440  # 24 hours
+          issue-title: '🚨 Infrastructure Drift - Manual Approval Required'
+          issue-body: |
+            ## Infrastructure Drift Detected - Approval Required
+            
+            **Workflow:** ${{ github.workflow }}
+            **Run ID:** ${{ github.run_id }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Changes Detected
+            Terraform has detected changes that need to be applied to your infrastructure.
+            
+            ### Review Process
+            1. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details
+            2. Download and review the Terraform plan from artifacts
+            3. Verify the changes are expected and safe
+            
+            ### Approval
+            - **To approve:** Comment `approved` on this issue
+            - **To reject:** Comment `denied` on this issue
+            
+            ### Security Reminder
+            Only approve if you understand and expect these changes.
+            
+            **This issue will auto-close in 24 hours if no action is taken.**
 
-      - name: terraform apply
-        run: terraform -chdir=infra/terraform apply -input=false tfplan
+      - name: Terraform Apply
+        id: apply
+        if: steps.plan.outputs.drift == 'true' || steps.plan.outputs.drift == 'false'
+        run: |
+          if [ "${{ steps.plan.outputs.drift }}" == "true" ]; then
+            echo "Applying planned changes..."
+            terraform -chdir=infra/terraform apply -input=false tfplan
+          else
+            echo "No changes to apply - infrastructure is up to date"
+          fi
+          
+          # Get server IP for inventory
+          SERVER_IP=$(terraform -chdir=infra/terraform output -raw instance_ip 2>/dev/null || echo "")
+          echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
+          
+          if [ -n "$SERVER_IP" ]; then
+            echo "Server IP: $SERVER_IP"
+          else
+            echo "Warning: Could not retrieve server IP"
+          fi
 
-      - name: install ansible
+      - name: Generate Ansible Inventory
+        if: steps.apply.outputs.server_ip != ''
+        run: |
+          mkdir -p infra/ansible
+          cat > infra/ansible/inventory << EOF
+          [app_servers]
+          ${{ steps.apply.outputs.server_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=./ssh-key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          
+          [app_servers:vars]
+          domain=${{ secrets.DOMAIN }}
+          email=${{ secrets.EMAIL_ALERT }}
+          duckdns_token=${{ secrets.DUCKDNS_TOKEN }}
+          github_repo=${{ github.server_url }}/${{ github.repository }}.git
+          github_branch=${{ github.ref_name }}
+          EOF
+
+      - name: Install Ansible
+        if: steps.apply.outputs.server_ip != ''
         run: |
           pip install ansible-core==2.17.5
-          ansible-galaxy install -r infra/ansible/requirements.yml
+          ansible-galaxy collection install community.docker
 
-      - name: generate inventory
-        run: ./infra/scripts/gen_inventory.sh > infra/ansible/inventory.ini
+      - name: Wait for SSH to be ready
+        if: steps.apply.outputs.server_ip != ''
+        run: |
+          echo "Waiting for SSH to be ready on ${{ steps.apply.outputs.server_ip }}..."
+          for i in {1..30}; do
+            if ssh -i ./ssh-key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@${{ steps.apply.outputs.server_ip }} echo "SSH Ready"; then
+              echo "SSH is ready!"
+              break
+            fi
+            echo "Attempt $i/30 failed, waiting 10 seconds..."
+            sleep 10
+          done
+
+      - name: Run Ansible Deployment
+        if: steps.apply.outputs.server_ip != ''
+        run: |
+          cd infra/ansible
+          ansible-playbook -i inventory playbook.yml -v
         env:
-          DOMAIN: ${{ secrets.DOMAIN }}
-          EMAIL:  ${{ secrets.EMAIL_ALERT }}
-          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
-          GITHUB_REPO: ${{ github.repository }}
-          GITHUB_BRANCH: ${{ github.ref_name }}
+          ANSIBLE_HOST_KEY_CHECKING: False
 
-      - name: run ansible
-        run: ansible-playbook -i infra/ansible/inventory.ini infra/ansible/playbook.yml
+      - name: Send Success Notification
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '✅ Infrastructure Deployment Successful'
+          to: ${{ secrets.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          body: |
+            ## ✅ Infrastructure Deployment Complete
+            
+            **Project:** HNG13 Stage 6 DevOps
+            **Status:** Successfully deployed
+            **Server IP:** ${{ steps.apply.outputs.server_ip }}
+            **Domain:** https://${{ secrets.DOMAIN }}
+            
+            ### What was deployed:
+            - Infrastructure provisioned with Terraform
+            - Server configured with Ansible
+            - Application deployed with Docker Compose
+            - SSL certificates configured
+            - Traefik reverse proxy setup
+            
+            ### Access your application:
+            🌐 **Frontend:** https://${{ secrets.DOMAIN }}
+            🔐 **Auth API:** https://${{ secrets.DOMAIN }}/api/auth
+            📝 **Todos API:** https://${{ secrets.DOMAIN }}/api/todos
+            👥 **Users API:** https://${{ secrets.DOMAIN }}/api/users
+            
+            ### Next Steps:
+            - Test your application functionality
+            - Monitor for any issues
+            - Check logs if needed: `docker logs <container_name>`
+            
+            **Deployment completed successfully!** 🎉
+            
+            ---
+            *Automated deployment notification*
+
+      - name: Send Failure Notification
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '❌ Infrastructure Deployment Failed'
+          to: ${{ secrets.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          body: |
+            ## ❌ Infrastructure Deployment Failed
+            
+            **Project:** HNG13 Stage 6 DevOps
+            **Status:** Deployment failed
+            **Workflow Run:** ${{ github.run_id }}
+            
+            ### Failure Details:
+            The infrastructure deployment pipeline has failed. Please check the workflow logs for detailed error information.
+            
+            ### Troubleshooting Steps:
+            1. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            2. Verify AWS credentials and permissions
+            3. Check Terraform configuration syntax
+            4. Verify Ansible playbook syntax
+            5. Ensure all required secrets are configured
+            
+            ### Common Issues:
+            - AWS credential problems
+            - Resource limits or quotas
+            - Network connectivity issues
+            - Configuration syntax errors
+            
+            **Please investigate and retry the deployment.**
+            
+            ---
+            *Automated failure notification*

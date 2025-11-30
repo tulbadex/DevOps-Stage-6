@@ -2,6 +2,7 @@ name: Application Deployment
 
 on:
   push:
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'auth-api/**'
@@ -9,36 +10,309 @@ on:
       - 'users-api/**'
       - 'log-message-processor/**'
       - 'docker-compose.yml'
-    branches: [main]
+      - '.env'
+      - '.github/workflows/application.yml'
   workflow_dispatch:
 
+env:
+  AWS_REGION: us-east-2
+
+concurrency:
+  group: application-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.changes.outputs.frontend }}
+      auth-api: ${{ steps.changes.outputs.auth-api }}
+      todos-api: ${{ steps.changes.outputs.todos-api }}
+      users-api: ${{ steps.changes.outputs.users-api }}
+      log-processor: ${{ steps.changes.outputs.log-processor }}
+      compose: ${{ steps.changes.outputs.compose }}
+      deploy-needed: ${{ steps.check.outputs.deploy-needed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            auth-api:
+              - 'auth-api/**'
+            todos-api:
+              - 'todos-api/**'
+            users-api:
+              - 'users-api/**'
+            log-processor:
+              - 'log-message-processor/**'
+            compose:
+              - 'docker-compose.yml'
+              - '.env'
+
+      - name: Check if deployment needed
+        id: check
+        run: |
+          if [ "${{ steps.changes.outputs.frontend }}" == "true" ] || \
+             [ "${{ steps.changes.outputs.auth-api }}" == "true" ] || \
+             [ "${{ steps.changes.outputs.todos-api }}" == "true" ] || \
+             [ "${{ steps.changes.outputs.users-api }}" == "true" ] || \
+             [ "${{ steps.changes.outputs.log-processor }}" == "true" ] || \
+             [ "${{ steps.changes.outputs.compose }}" == "true" ]; then
+            echo "deploy-needed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected - deployment needed"
+          else
+            echo "deploy-needed=false" >> $GITHUB_OUTPUT
+            echo "No application changes detected - skipping deployment"
+          fi
+
+  build-and-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-needed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup SSH Key
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and test services
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+          echo "Building changed services..."
           
-      - name: Deploy Application
+          # Build only changed services to save time
+          if [ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]; then
+            echo "Building frontend..."
+            docker build -t test-frontend ./frontend
+          fi
+          
+          if [ "${{ needs.detect-changes.outputs.auth-api }}" == "true" ]; then
+            echo "Building auth-api..."
+            docker build -t test-auth-api ./auth-api
+          fi
+          
+          if [ "${{ needs.detect-changes.outputs.todos-api }}" == "true" ]; then
+            echo "Building todos-api..."
+            docker build -t test-todos-api ./todos-api
+          fi
+          
+          if [ "${{ needs.detect-changes.outputs.users-api }}" == "true" ]; then
+            echo "Building users-api..."
+            docker build -t test-users-api ./users-api
+          fi
+          
+          if [ "${{ needs.detect-changes.outputs.log-processor }}" == "true" ]; then
+            echo "Building log-message-processor..."
+            docker build -t test-log-processor ./log-message-processor
+          fi
+
+      - name: Test docker-compose configuration
         run: |
-          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.SERVER_IP }} << 'EOF'
-            cd /opt/hng-stage6
-            git pull origin main
-            
-            # Build Java app if changed
-            if git diff --name-only HEAD~1 HEAD | grep -q "users-api/"; then
-              cd users-api
-              ./mvnw clean package -DskipTests
-              cd ..
-            fi
-            
-            # Restart containers
-            docker-compose down
-            docker-compose up -d --build
+          # Create a test .env file
+          cat > .env << EOF
+          DOMAIN=localhost
+          ACME_EMAIL=test@example.com
+          COMPOSE_PROJECT_NAME=test
+          PORT=8080
+          AUTH_API_ADDRESS=http://auth-api:8081
+          TODOS_API_ADDRESS=http://todos-api:8082
+          AUTH_API_PORT=8081
+          JWT_SECRET=testsecret
+          USERS_API_ADDRESS=http://users-api:8083
+          REDIS_HOST=redis-queue
+          REDIS_PORT=6379
+          REDIS_CHANNEL=log_channel
+          SERVER_PORT=8083
+          ZIPKIN_URL=http://zipkin:9411/api/v2/spans
           EOF
+          
+          # Validate docker-compose configuration
+          docker compose config --quiet
+          echo "Docker Compose configuration is valid"
+
+  deploy:
+    needs: [detect-changes, build-and-test]
+    if: needs.detect-changes.outputs.deploy-needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Get server IP from Terraform
+        id: server
+        run: |
+          cd infra/terraform
+          terraform init -input=false
+          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || echo "")
+          if [ -n "$SERVER_IP" ]; then
+            echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
+            echo "Found server IP: $SERVER_IP"
+          else
+            echo "Error: Could not get server IP from Terraform"
+            exit 1
+          fi
+
+      - name: Create SSH key file
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ./ssh-key.pem
+          chmod 600 ./ssh-key.pem
+
+      - name: Install Ansible
+        run: |
+          pip install ansible-core==2.17.5
+          ansible-galaxy collection install community.docker
+
+      - name: Create Ansible inventory
+        run: |
+          mkdir -p infra/ansible
+          cat > infra/ansible/inventory << EOF
+          [app_servers]
+          ${{ steps.server.outputs.server_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=../../ssh-key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          
+          [app_servers:vars]
+          domain=${{ secrets.DOMAIN }}
+          email=${{ secrets.EMAIL_ALERT }}
+          duckdns_token=${{ secrets.DUCKDNS_TOKEN }}
+          github_repo=${{ github.server_url }}/${{ github.repository }}.git
+          github_branch=${{ github.ref_name }}
+          EOF
+
+      - name: Deploy application
+        run: |
+          cd infra/ansible
+          ansible-playbook -i inventory playbook.yml -v --tags deploy
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          
+          # Test if the application is responding
+          for i in {1..10}; do
+            if curl -f -s --max-time 10 "http://${{ steps.server.outputs.server_ip }}:8080" > /dev/null; then
+              echo "Application is responding on port 8080"
+              break
+            fi
+            echo "Attempt $i/10: Application not ready yet, waiting..."
+            sleep 10
+          done
+
+      - name: Send deployment notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '🚀 Application Deployment Complete'
+          to: ${{ secrets.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          body: |
+            ## 🚀 Application Deployment Successful
+            
+            **Project:** HNG13 Stage 6 DevOps
+            **Deployment Type:** Application Update
+            **Server IP:** ${{ steps.server.outputs.server_ip }}
+            **Domain:** https://${{ secrets.DOMAIN }}
+            
+            ### Services Updated:
+            ${{ needs.detect-changes.outputs.frontend == 'true' && '✅ Frontend (Vue.js)' || '⏭️ Frontend (no changes)' }}
+            ${{ needs.detect-changes.outputs.auth-api == 'true' && '✅ Auth API (Go)' || '⏭️ Auth API (no changes)' }}
+            ${{ needs.detect-changes.outputs.todos-api == 'true' && '✅ Todos API (Node.js)' || '⏭️ Todos API (no changes)' }}
+            ${{ needs.detect-changes.outputs.users-api == 'true' && '✅ Users API (Java)' || '⏭️ Users API (no changes)' }}
+            ${{ needs.detect-changes.outputs.log-processor == 'true' && '✅ Log Processor (Python)' || '⏭️ Log Processor (no changes)' }}
+            ${{ needs.detect-changes.outputs.compose == 'true' && '✅ Docker Compose Configuration' || '⏭️ Docker Compose (no changes)' }}
+            
+            ### Application URLs:
+            🌐 **Frontend:** https://${{ secrets.DOMAIN }}
+            🔐 **Auth API:** https://${{ secrets.DOMAIN }}/api/auth
+            📝 **Todos API:** https://${{ secrets.DOMAIN }}/api/todos
+            👥 **Users API:** https://${{ secrets.DOMAIN }}/api/users
+            
+            ### Test Credentials:
+            - **Username:** admin | **Password:** Admin123
+            - **Username:** hng | **Password:** HngTech
+            - **Username:** user | **Password:** Password
+            
+            ### Post-Deployment Checklist:
+            - [ ] Test login functionality
+            - [ ] Verify API endpoints
+            - [ ] Check SSL certificate
+            - [ ] Monitor application logs
+            
+            **Deployment completed successfully!** 🎉
+            
+            ---
+            *Automated deployment notification*
+            *Commit: ${{ github.sha }}*
+
+  no-changes:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-needed == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: No deployment needed
+        run: |
+          echo "No application changes detected. Skipping deployment."
+          echo "Changed paths in this push do not affect the application services."
+          
+      - name: Send no-changes notification
+        if: github.event_name == 'workflow_dispatch'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: 'ℹ️ Application Pipeline - No Changes Detected'
+          to: ${{ secrets.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          body: |
+            ## ℹ️ Application Pipeline Executed - No Changes
+            
+            **Project:** HNG13 Stage 6 DevOps
+            **Trigger:** Manual workflow dispatch
+            **Result:** No deployment needed
+            
+            ### Analysis:
+            The application deployment pipeline was triggered but no changes were detected in:
+            - Frontend service
+            - Auth API service  
+            - Todos API service
+            - Users API service
+            - Log Message Processor service
+            - Docker Compose configuration
+            
+            ### Current Status:
+            Your application is running the latest deployed version.
+            
+            ### If you expected changes:
+            - Verify your changes are in the correct directories
+            - Check that files were committed and pushed
+            - Ensure the workflow paths are configured correctly
+            
+            ---
+            *Automated pipeline notification*
