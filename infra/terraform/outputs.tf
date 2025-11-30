@@ -1,19 +1,19 @@
-output "instance_public_ip" {
-  description = "Public IP of the EC2 instance"
-  value       = aws_instance.web.public_ip
+output "public_ip" {
+  value       = aws_instance.app_server.public_ip
+  description = "The public IP address of the EC2 instance"
 }
 
-output "instance_public_dns" {
-  description = "Public DNS of the EC2 instance"
-  value       = aws_instance.web.public_dns
+output "public_dns" {
+  value       = aws_instance.app_server.public_dns
+  description = "The public DNS of the EC2 instance"
 }
 
-output "security_group_id" {
-  description = "ID of the security group"
-  value       = aws_security_group.web.id
+output "ssh_command" {
+  value       = "ssh -i ${var.private_key_path} ubuntu@${aws_instance.app_server.public_ip}"
+  description = "SSH command to connect to the instance"
 }
 
-output "vpc_id" {
-  description = "ID of the VPC"
-  value       = aws_vpc.main.id
+# NEW
+output "public_ip_raw" {
+  value = aws_instance.app_server.public_ip
 }

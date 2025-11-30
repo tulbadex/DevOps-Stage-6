@@ -1,51 +1,35 @@
 variable "aws_region" {
-  description = "AWS region"
+  description = "AWS region to deploy resources"
   type        = string
-  default     = "us-east-1"
-}
-
-variable "project_name" {
-  description = "Project name for resource naming"
-  type        = string
-  default     = "hng-stage6"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for VPC"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "public_subnet_cidr" {
-  description = "CIDR block for public subnet"
-  type        = string
-  default     = "10.0.1.0/24"
 }
 
 variable "ami_id" {
-  description = "AMI ID for EC2 instance"
+  description = "AMI ID for Ubuntu 22.04 in us-east-2"
   type        = string
-  default     = "ami-0c02fb55956c7d316" # Ubuntu 20.04 LTS
 }
 
 variable "instance_type" {
-  description = "EC2 instance type"
+  description = "Instance type for the EC2 instance"
   type        = string
-  default     = "t3.medium"
 }
 
-variable "public_key" {
-  description = "Public key for EC2 access"
+variable "instance_name" {
+  description = "Name for the EC2 instance"
+  type        = string
+}
+
+variable "ssh_key_name" {
+  description = "AWS key pair name"
   type        = string
 }
 
 variable "private_key_path" {
-  description = "Path to private key file"
+  description = "Path to the private key file"
   type        = string
 }
 
-variable "domain_name" {
-  description = "Domain name for the application"
+variable "github_repo" {
+  description = "GitHub repository URL for the application"
   type        = string
 }
 
@@ -54,25 +38,24 @@ variable "email" {
   type        = string
 }
 
-variable "github_username" {
-  description = "GitHub username for repository"
+variable "domain" {
+  description = "Domain to the application"
   type        = string
 }
 
-variable "repo_name" {
-  description = "Repository name"
+variable "email_ses" { 
+  description = "your email for drift alerts" 
   type        = string
-  default     = "hng-stage6"
 }
 
-variable "duckdns_subdomain" {
-  description = "DuckDNS subdomain (without .duckdns.org)"
+variable "github_branch" { 
+  description = "the github branch to be used" 
   type        = string
-  default     = ""
+  default     = "main" 
 }
 
 variable "duckdns_token" {
-  description = "DuckDNS token for domain updates"
+  description = "DuckDNS token for dynamic DNS updates"
   type        = string
   default     = ""
   sensitive   = true

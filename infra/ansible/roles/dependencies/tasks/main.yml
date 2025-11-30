@@ -1,24 +1,28 @@
----
-- name: Kill any running apt processes
+- name: wait for apt lock to be released
   shell: |
-    sudo pkill -f apt-get || true
-    sudo pkill -f dpkg || true
-    sudo rm -f /var/lib/dpkg/lock-frontend
-    sudo rm -f /var/lib/dpkg/lock
-    sudo dpkg --configure -a
-  changed_when: false
-  ignore_errors: yes
+    timeout=300
+    elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+      if ! fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        if ! pgrep -x apt-get >/dev/null && ! pgrep -x dpkg >/dev/null && ! pgrep -x apt >/dev/null; then
+          echo "All apt locks released"
+          break
+        fi
+      fi
+      echo "Waiting for apt lock to be released... ($elapsed/$timeout)"
+      sleep 10
+      elapsed=$((elapsed + 10))
+    done
+    if [ $elapsed -ge $timeout ]; then
+      echo "Timeout waiting for apt lock, attempting to continue"
+    fi
+  become: yes
 
-- name: Wait for system to settle
-  pause:
-    seconds: 10
+- name: update apt cache
+  apt: update_cache=yes cache_valid_time=3600
+  become: yes
 
-- name: Update apt cache
-  apt:
-    update_cache: yes
-    cache_valid_time: 3600
-
-- name: Install required packages
+- name: install base packages
   apt:
     name:
       - apt-transport-https
@@ -28,49 +32,43 @@
       - lsb-release
       - git
       - python3-pip
-      - openjdk-11-jdk
-      - maven
     state: present
+  become: yes
+  retries: 3
+  delay: 30
+  register: result
+  until: result is succeeded
 
-- name: Add Docker GPG key
+- name: add Docker GPG key
   apt_key:
     url: https://download.docker.com/linux/ubuntu/gpg
     state: present
+  become: yes
 
-- name: Add Docker repository
+- name: add Docker repo
   apt_repository:
     repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
+  become: yes
 
-- name: Install Docker
+- name: install Docker & compose plugin
   apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
-      - docker-buildx-plugin
       - docker-compose-plugin
     state: present
-    update_cache: yes
+  become: yes
+  retries: 3
+  delay: 30
+  register: result
+  until: result is succeeded
 
-- name: Start and enable Docker service
-  systemd:
-    name: docker
-    state: started
-    enabled: yes
+- name: add ubuntu to docker group
+  user: name=ubuntu groups=docker append=yes
+  become: yes
 
-- name: Add ubuntu user to docker group
-  user:
-    name: ubuntu
-    groups: docker
-    append: yes
-
-
-
-- name: Create application directory
-  file:
-    path: "{{ app_dir }}"
-    state: directory
-    owner: ubuntu
-    group: ubuntu
-    mode: '0755'
+- name: enable docker
+  systemd: name=docker enabled=yes state=started
+  become: yes

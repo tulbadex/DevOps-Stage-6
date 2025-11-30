@@ -1,126 +1,92 @@
-name: Infrastructure Deployment
+name: Infra pipeline
 
 on:
   push:
-    paths:
-      - 'infra/terraform/**'
-      - 'infra/ansible/**'
+    branches: [main]
+    paths: ['infra/terraform/**','infra/ansible/**','.github/workflows/infra.yml']
   workflow_dispatch:
 
 env:
-  TF_VAR_public_key: ${{ secrets.PUBLIC_KEY }}
-  TF_VAR_private_key_path: ${{ secrets.PRIVATE_KEY_PATH }}
-  TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
-  TF_VAR_email: ${{ secrets.EMAIL }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: us-east-1
+  TF_VAR_email_ses: ${{ secrets.EMAIL_ALERT }}
+  DOMAIN: ${{ secrets.DOMAIN }}
+  DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}   # NEW
+
+# prevent two pushes from fighting
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  terraform-plan:
+  terraform:
     runs-on: ubuntu-latest
     outputs:
-      has-changes: ${{ steps.plan.outputs.has-changes }}
+      drift: ${{ steps.plan.outputs.drift }}
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.0
-          
-      - name: Terraform Init
-        run: |
-          cd infra/terraform
-          terraform init
-          
-      - name: Terraform Plan
+          terraform_version: 1.9.8          # pinned
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform -chdir=infra/terraform init -input=false
+
+      - name: terraform plan
         id: plan
         run: |
-          cd infra/terraform
-          terraform plan -detailed-exitcode -out=tfplan
-          echo "has-changes=$?" >> $GITHUB_OUTPUT
-          
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
+          set +e
+          terraform -chdir=infra/terraform plan -detailed-exitcode -out=tfplan
+          EXIT_CODE=$?
+          echo "exitcode=$EXIT_CODE" >> $GITHUB_OUTPUT
+          if [ $EXIT_CODE -eq 2 ]; then echo "drift=true" >> $GITHUB_OUTPUT; else echo "drift=false" >> $GITHUB_OUTPUT; fi
+          exit 0   # keep step green so mail can run
+
+      - name: upload plan artefact
+        uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan
+          name: tfplan
           path: infra/terraform/tfplan
+          retention-days: 7
 
-  drift-notification:
-    needs: terraform-plan
-    runs-on: ubuntu-latest
-    if: needs.terraform-plan.outputs.has-changes == '2'
-    steps:
-      - name: Send Drift Detection Email
-        uses: dawidd6/action-send-mail@v3
+      - name: send drift e-mail
+        if: steps.plan.outputs.drift == 'true'
+        uses: cinotify/email-action@v1.0.0
         with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "🚨 Infrastructure Drift Detected - HNG Stage 6"
+          to: ${{ secrets.EMAIL_ALERT }}
+          subject: 'DRIFT DETECTED – terraform plan needs approval'
           body: |
-            Infrastructure drift has been detected in the HNG Stage 6 project.
-            
-            Changes detected in Terraform plan. Manual approval required before applying changes.
-            
-            Please review the changes and approve the deployment if they are expected.
-            
-            Repository: ${{ github.repository }}
-            Commit: ${{ github.sha }}
-            Branch: ${{ github.ref_name }}
-          to: ${{ secrets.NOTIFICATION_EMAIL }}
-          from: ${{ secrets.SMTP_USERNAME }}
+            A terraform plan found changes. Visit ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} to approve.
 
-  manual-approval:
-    needs: [terraform-plan, drift-notification]
-    runs-on: ubuntu-latest
-    if: needs.terraform-plan.outputs.has-changes == '2'
-    environment: production
-    steps:
-      - name: Manual Approval Required
-        run: echo "Manual approval required for infrastructure changes"
+      - name: hold for manual approval
+        if: steps.plan.outputs.drift == 'true'
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ github.repository_owner }}
+          minimum-approvals: 1
 
-  terraform-apply:
-    needs: [terraform-plan, manual-approval]
-    runs-on: ubuntu-latest
-    if: always() && (needs.terraform-plan.outputs.has-changes == '0' || (needs.terraform-plan.outputs.has-changes == '2' && needs.manual-approval.result == 'success'))
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-          
-      - name: Setup SSH Key
+      - name: terraform apply
+        run: terraform -chdir=infra/terraform apply -input=false tfplan
+
+      - name: install ansible
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-      - name: Setup Ansible
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible
-          
-      - name: Terraform Init
-        run: |
-          cd infra/terraform
-          terraform init
-          
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: terraform-plan
-          path: infra/terraform/
-        if: needs.terraform-plan.outputs.has-changes == '2'
-          
-      - name: Terraform Apply
-        run: |
-          cd infra/terraform
-          if [ "${{ needs.terraform-plan.outputs.has-changes }}" == "2" ]; then
-            terraform apply tfplan
-          else
-            terraform apply -auto-approve
-          fi
+          pip install ansible-core==2.17.5
+          ansible-galaxy install -r infra/ansible/requirements.yml
+
+      - name: generate inventory
+        run: ./infra/scripts/gen_inventory.sh > infra/ansible/inventory.ini
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+          EMAIL:  ${{ secrets.EMAIL_ALERT }}
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_BRANCH: ${{ github.ref_name }}
+
+      - name: run ansible
+        run: ansible-playbook -i infra/ansible/inventory.ini infra/ansible/playbook.yml

@@ -8,6 +8,10 @@ infra/terraform/*.tfvars
 infra/terraform/.terraform.tfstate.lock.info
 *.tfplan
 
+# SSH Keys
+*.pem
+infra/terraform/*.pem
+
 # Ansible files
 infra/ansible/inventory.ini
 infra/ansible/inventory

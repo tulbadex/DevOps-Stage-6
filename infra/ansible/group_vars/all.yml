@@ -1,0 +1,4 @@
+domain: "{{ lookup('env','DOMAIN') | default('hng13-todo-app.duckdns.org',true) }}"
+email:  "{{ lookup('env','EMAIL') | default('tulbadex@gmail.com',true) }}"
+duckdns_subdomain: "{{ domain.split('.')[0] }}"   # hng13-todo-app
+duckdns_token: "{{ lookup('env','DUCKDNS_TOKEN') }}"   # put in CI secret
