@@ -165,13 +165,7 @@ jobs:
           cd infra/terraform
           terraform init -input=false
           
-          # Check if state file exists and has resources
-          if [ ! -f terraform.tfstate ] || [ ! -s terraform.tfstate ]; then
-            echo "No terraform state found. Please run infrastructure pipeline first."
-            exit 1
-          fi
-          
-          # Try to get server IP
+          # Try to get server IP from state (local or remote)
           SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || echo "")
           if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
             echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
