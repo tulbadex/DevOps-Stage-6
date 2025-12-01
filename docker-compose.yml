@@ -151,8 +151,6 @@ services:
       - "traefik.http.routers.zipkin.tls=true"
       - "traefik.http.routers.zipkin.tls.certresolver=myresolver"
       - "traefik.http.services.zipkin.loadbalancer.server.port=9411"
-      - "traefik.http.middlewares.zipkin-strip.stripprefix.prefixes=/zipkin"
-      - "traefik.http.routers.zipkin.middlewares=zipkin-strip"
     networks:
       - app-network
 

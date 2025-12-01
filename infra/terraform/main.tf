@@ -70,6 +70,7 @@ EOF
 
   lifecycle {
     ignore_changes = [user_data]
+    create_before_destroy = false
   }
 }
 
