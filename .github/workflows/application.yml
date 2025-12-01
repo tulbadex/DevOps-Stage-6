@@ -165,13 +165,16 @@ jobs:
           cd infra/terraform
           terraform init -input=false
           
-          # Try to get server IP from state (local or remote)
-          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || echo "")
-          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
+          # Try to get server IP from state (try multiple output names)
+          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
+          
+          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
             echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
             echo "Found server IP: $SERVER_IP"
           else
             echo "No server IP found in terraform state."
+            echo "Available outputs:"
+            terraform output 2>/dev/null || echo "No outputs available"
             echo "Please run the infrastructure pipeline first to create the server."
             exit 1
           fi
