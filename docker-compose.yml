@@ -13,6 +13,8 @@ services:
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
       - "--accesslog=true"
       - "--log.level=DEBUG"
     ports:
@@ -127,11 +129,30 @@ services:
       - app-network
     depends_on:
       - redis-queue
+      - zipkin
 
   redis-queue:
     image: redis:alpine
     ports:
       - "6379:6379"
+    networks:
+      - app-network
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zipkin.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/zipkin`)"
+      - "traefik.http.routers.zipkin.entrypoints=websecure"
+      - "traefik.http.routers.zipkin.tls=true"
+      - "traefik.http.routers.zipkin.tls.certresolver=myresolver"
+      - "traefik.http.services.zipkin.loadbalancer.server.port=9411"
+      - "traefik.http.middlewares.zipkin-strip.stripprefix.prefixes=/zipkin"
+      - "traefik.http.routers.zipkin.middlewares=zipkin-strip"
     networks:
       - app-network
 

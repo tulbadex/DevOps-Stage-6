@@ -108,45 +108,73 @@ jobs:
           subject: '🚨 INFRASTRUCTURE DRIFT DETECTED - Manual Approval Required'
           to: ${{ vars.EMAIL_ALERT }}
           from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
-          body: |
-            ## 🚨 Infrastructure Drift Alert
-            
-            **Project:** HNG13 Stage 6 DevOps
-            **Repository:** ${{ github.repository }}
-            **Branch:** ${{ github.ref_name }}
-            **Commit:** ${{ github.sha }}
-            **Workflow Run:** ${{ github.run_id }}
-            
-            ### Summary
-            Infrastructure drift has been detected. The current infrastructure state differs from your Terraform configuration.
-            
-            ### What This Means
-            - Resources may have been modified outside of Terraform
-            - New resources may need to be created
-            - Existing resources may need updates
-            - Manual approval is required before applying changes
-            
-            ### Required Actions
-            1. **Review the changes** in the GitHub Actions workflow
-            2. **Download the Terraform plan** from the artifacts
-            3. **Approve or reject** the changes
-            4. **Investigate** why drift occurred to prevent future issues
-            
-            ### Links
-            - [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            - [Download Terraform Plan](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)
-            
-            ### Security Note
-            If you did not expect these changes, this could indicate:
-            - Unauthorized access to your AWS account
-            - Manual changes made outside of the CI/CD process
-            - Configuration drift that needs immediate attention
-            
-            **Please review and approve/reject within 24 hours.**
-            
-            ---
-            *This is an automated message from your DevOps pipeline.*
-            *Generated at: ${{ github.event.head_commit.timestamp }}*
+          html_body: |
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #d73a49; border-bottom: 2px solid #d73a49; padding-bottom: 10px;">🚨 Infrastructure Drift Alert</h2>
+                
+                <div style="background-color: #f6f8fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                  <p><strong>Project:</strong> HNG13 Stage 6 DevOps</p>
+                  <p><strong>Repository:</strong> ${{ github.repository }}</p>
+                  <p><strong>Branch:</strong> ${{ github.ref_name }}</p>
+                  <p><strong>Commit:</strong> ${{ github.sha }}</p>
+                  <p><strong>Workflow Run:</strong> ${{ github.run_id }}</p>
+                </div>
+                
+                <h3 style="color: #0366d6;">Summary</h3>
+                <p>Infrastructure drift has been detected. The current infrastructure state differs from your Terraform configuration.</p>
+                
+                <h3 style="color: #0366d6;">What This Means</h3>
+                <ul>
+                  <li>Resources may have been modified outside of Terraform</li>
+                  <li>New resources may need to be created</li>
+                  <li>Existing resources may need updates</li>
+                  <li>Manual approval is required before applying changes</li>
+                </ul>
+                
+                <h3 style="color: #0366d6;">Required Actions</h3>
+                <ol>
+                  <li><strong>Review the changes</strong> in the GitHub Actions workflow</li>
+                  <li><strong>Download the Terraform plan</strong> from the artifacts</li>
+                  <li><strong>Approve or reject</strong> the changes</li>
+                  <li><strong>Investigate</strong> why drift occurred to prevent future issues</li>
+                </ol>
+                
+                <h3 style="color: #0366d6;">Links</h3>
+                <p>
+                  <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" 
+                     style="background-color: #0366d6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
+                    View Workflow Run
+                  </a><br>
+                  <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts" 
+                     style="background-color: #28a745; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
+                    Download Terraform Plan
+                  </a>
+                </p>
+                
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                  <h3 style="color: #856404; margin-top: 0;">⚠️ Security Note</h3>
+                  <p>If you did not expect these changes, this could indicate:</p>
+                  <ul>
+                    <li>Unauthorized access to your AWS account</li>
+                    <li>Manual changes made outside of the CI/CD process</li>
+                    <li>Configuration drift that needs immediate attention</li>
+                  </ul>
+                </div>
+                
+                <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 5px;">
+                  <p style="font-size: 18px; font-weight: bold; color: #d73a49;">Please review and approve/reject within 24 hours.</p>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 30px 0;">
+                <p style="font-size: 12px; color: #6a737d; text-align: center;">
+                  <em>This is an automated message from your DevOps pipeline.</em><br>
+                  <em>Generated at: ${{ github.event.head_commit.timestamp }}</em>
+                </p>
+              </div>
+            </body>
+            </html>
 
       - name: Wait for Manual Approval
         if: steps.plan.outputs.drift == 'true'
@@ -257,36 +285,54 @@ jobs:
           subject: '✅ Infrastructure Deployment Successful'
           to: ${{ vars.EMAIL_ALERT }}
           from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
-          body: |
-            ## ✅ Infrastructure Deployment Complete
-            
-            **Project:** HNG13 Stage 6 DevOps
-            **Status:** Successfully deployed
-            **Server IP:** ${{ steps.apply.outputs.server_ip }}
-            **Domain:** https://${{ vars.DOMAIN }}
-            
-            ### What was deployed:
-            - Infrastructure provisioned with Terraform
-            - Server configured with Ansible
-            - Application deployed with Docker Compose
-            - SSL certificates configured
-            - Traefik reverse proxy setup
-            
-            ### Access your application:
-            🌐 **Frontend:** https://${{ vars.DOMAIN }}
-            🔐 **Auth API:** https://${{ vars.DOMAIN }}/api/auth
-            📝 **Todos API:** https://${{ vars.DOMAIN }}/api/todos
-            👥 **Users API:** https://${{ vars.DOMAIN }}/api/users
-            
-            ### Next Steps:
-            - Test your application functionality
-            - Monitor for any issues
-            - Check logs if needed: `docker logs <container_name>`
-            
-            **Deployment completed successfully!** 🎉
-            
-            ---
-            *Automated deployment notification*
+          html_body: |
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 10px;">✅ Infrastructure Deployment Complete</h2>
+                
+                <div style="background-color: #d4edda; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #c3e6cb;">
+                  <p><strong>Project:</strong> HNG13 Stage 6 DevOps</p>
+                  <p><strong>Status:</strong> Successfully deployed</p>
+                  <p><strong>Server IP:</strong> ${{ steps.apply.outputs.server_ip }}</p>
+                  <p><strong>Domain:</strong> <a href="https://${{ vars.DOMAIN }}">https://${{ vars.DOMAIN }}</a></p>
+                </div>
+                
+                <h3 style="color: #0366d6;">What was deployed:</h3>
+                <ul>
+                  <li>Infrastructure provisioned with Terraform</li>
+                  <li>Server configured with Ansible</li>
+                  <li>Application deployed with Docker Compose</li>
+                  <li>SSL certificates configured</li>
+                  <li>Traefik reverse proxy setup</li>
+                </ul>
+                
+                <h3 style="color: #0366d6;">Access your application:</h3>
+                <div style="background-color: #f6f8fa; padding: 15px; border-radius: 5px;">
+                  <p>🌐 <strong>Frontend:</strong> <a href="https://${{ vars.DOMAIN }}">https://${{ vars.DOMAIN }}</a></p>
+                  <p>🔐 <strong>Auth API:</strong> <a href="https://${{ vars.DOMAIN }}/api/auth">https://${{ vars.DOMAIN }}/api/auth</a></p>
+                  <p>📝 <strong>Todos API:</strong> <a href="https://${{ vars.DOMAIN }}/api/todos">https://${{ vars.DOMAIN }}/api/todos</a></p>
+                  <p>👥 <strong>Users API:</strong> <a href="https://${{ vars.DOMAIN }}/api/users">https://${{ vars.DOMAIN }}/api/users</a></p>
+                </div>
+                
+                <h3 style="color: #0366d6;">Next Steps:</h3>
+                <ul>
+                  <li>Test your application functionality</li>
+                  <li>Monitor for any issues</li>
+                  <li>Check logs if needed: <code>docker logs &lt;container_name&gt;</code></li>
+                </ul>
+                
+                <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #d4edda; border-radius: 5px;">
+                  <p style="font-size: 18px; font-weight: bold; color: #155724;">Deployment completed successfully! 🎉</p>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 30px 0;">
+                <p style="font-size: 12px; color: #6a737d; text-align: center;">
+                  <em>Automated deployment notification</em>
+                </p>
+              </div>
+            </body>
+            </html>
 
       - name: Send Failure Notification
         if: failure()
@@ -299,30 +345,46 @@ jobs:
           subject: '❌ Infrastructure Deployment Failed'
           to: ${{ vars.EMAIL_ALERT }}
           from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
-          body: |
-            ## ❌ Infrastructure Deployment Failed
-            
-            **Project:** HNG13 Stage 6 DevOps
-            **Status:** Deployment failed
-            **Workflow Run:** ${{ github.run_id }}
-            
-            ### Failure Details:
-            The infrastructure deployment pipeline has failed. Please check the workflow logs for detailed error information.
-            
-            ### Troubleshooting Steps:
-            1. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            2. Verify AWS credentials and permissions
-            3. Check Terraform configuration syntax
-            4. Verify Ansible playbook syntax
-            5. Ensure all required secrets are configured
-            
-            ### Common Issues:
-            - AWS credential problems
-            - Resource limits or quotas
-            - Network connectivity issues
-            - Configuration syntax errors
-            
-            **Please investigate and retry the deployment.**
-            
-            ---
-            *Automated failure notification*
+          html_body: |
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #d73a49; border-bottom: 2px solid #d73a49; padding-bottom: 10px;">❌ Infrastructure Deployment Failed</h2>
+                
+                <div style="background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #f5c6cb;">
+                  <p><strong>Project:</strong> HNG13 Stage 6 DevOps</p>
+                  <p><strong>Status:</strong> Deployment failed</p>
+                  <p><strong>Workflow Run:</strong> ${{ github.run_id }}</p>
+                </div>
+                
+                <h3 style="color: #d73a49;">Failure Details:</h3>
+                <p>The infrastructure deployment pipeline has failed. Please check the workflow logs for detailed error information.</p>
+                
+                <h3 style="color: #0366d6;">Troubleshooting Steps:</h3>
+                <ol>
+                  <li>Check the <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">workflow logs</a></li>
+                  <li>Verify AWS credentials and permissions</li>
+                  <li>Check Terraform configuration syntax</li>
+                  <li>Verify Ansible playbook syntax</li>
+                  <li>Ensure all required secrets are configured</li>
+                </ol>
+                
+                <h3 style="color: #0366d6;">Common Issues:</h3>
+                <ul>
+                  <li>AWS credential problems</li>
+                  <li>Resource limits or quotas</li>
+                  <li>Network connectivity issues</li>
+                  <li>Configuration syntax errors</li>
+                </ul>
+                
+                <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #f8d7da; border-radius: 5px;">
+                  <p style="font-size: 18px; font-weight: bold; color: #721c24;">Please investigate and retry the deployment.</p>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 30px 0;">
+                <p style="font-size: 12px; color: #6a737d; text-align: center;">
+                  <em>Automated failure notification</em>
+                </p>
+              </div>
+            </body>
+            </html>
