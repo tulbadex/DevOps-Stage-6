@@ -191,8 +191,8 @@ jobs:
           ${{ steps.server.outputs.server_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=../../ssh-key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
           
           [app_servers:vars]
-          domain=${{ secrets.DOMAIN }}
-          email=${{ secrets.EMAIL_ALERT }}
+          domain=${{ vars.DOMAIN }}
+          email=${{ vars.EMAIL_ALERT }}
           duckdns_token=${{ secrets.DUCKDNS_TOKEN }}
           github_repo=${{ github.server_url }}/${{ github.repository }}.git
           github_branch=${{ github.ref_name }}
@@ -225,18 +225,18 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
+          username: ${{ vars.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: '🚀 Application Deployment Complete'
-          to: ${{ secrets.EMAIL_ALERT }}
-          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
           body: |
             ## 🚀 Application Deployment Successful
             
             **Project:** HNG13 Stage 6 DevOps
             **Deployment Type:** Application Update
             **Server IP:** ${{ steps.server.outputs.server_ip }}
-            **Domain:** https://${{ secrets.DOMAIN }}
+            **Domain:** https://${{ vars.DOMAIN }}
             
             ### Services Updated:
             ${{ needs.detect-changes.outputs.frontend == 'true' && '✅ Frontend (Vue.js)' || '⏭️ Frontend (no changes)' }}
@@ -247,10 +247,10 @@ jobs:
             ${{ needs.detect-changes.outputs.compose == 'true' && '✅ Docker Compose Configuration' || '⏭️ Docker Compose (no changes)' }}
             
             ### Application URLs:
-            🌐 **Frontend:** https://${{ secrets.DOMAIN }}
-            🔐 **Auth API:** https://${{ secrets.DOMAIN }}/api/auth
-            📝 **Todos API:** https://${{ secrets.DOMAIN }}/api/todos
-            👥 **Users API:** https://${{ secrets.DOMAIN }}/api/users
+            🌐 **Frontend:** https://${{ vars.DOMAIN }}
+            🔐 **Auth API:** https://${{ vars.DOMAIN }}/api/auth
+            📝 **Todos API:** https://${{ vars.DOMAIN }}/api/todos
+            👥 **Users API:** https://${{ vars.DOMAIN }}/api/users
             
             ### Test Credentials:
             - **Username:** admin | **Password:** Admin123
@@ -285,11 +285,11 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
+          username: ${{ vars.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: 'ℹ️ Application Pipeline - No Changes Detected'
-          to: ${{ secrets.EMAIL_ALERT }}
-          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
           body: |
             ## ℹ️ Application Pipeline Executed - No Changes
             
