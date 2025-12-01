@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "version": "1.0.0",
-  "description": "UI for sample distributed TODO app - Updated for deployment test",
+  "description": "UI for sample distributed TODO app",
   "author": "elgris <iddqd07@yandex.ru>",
   "private": true,
   "scripts": {
