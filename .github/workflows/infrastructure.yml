@@ -155,7 +155,7 @@ jobs:
           secret: ${{ github.TOKEN }}
           approvers: ${{ github.repository_owner }}
           minimum-approvals: 1
-          timeout-minutes: 1440  # 24 hours
+          polling-interval-seconds: 60
           issue-title: '🚨 Infrastructure Drift - Manual Approval Required'
           issue-body: |
             ## Infrastructure Drift Detected - Approval Required
@@ -180,7 +180,7 @@ jobs:
             ### Security Reminder
             Only approve if you understand and expect these changes.
             
-            **This issue will auto-close in 24 hours if no action is taken.**
+            **This issue will auto-close if no action is taken.**
 
       - name: Terraform Apply
         id: apply

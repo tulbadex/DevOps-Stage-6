@@ -18,17 +18,30 @@
     owner: ubuntu
     group: ubuntu
 
-- name: Set correct permissions for acme.json
+- name: Initialize empty acme.json for Let's Encrypt
   become: true
-  file:
-    path: /home/ubuntu/todoapp/letsencrypt/acme.json
-    state: touch
-    mode: '0600'
+  shell: |
+    echo '{}' > /home/ubuntu/todoapp/letsencrypt/acme.json
+    chmod 600 /home/ubuntu/todoapp/letsencrypt/acme.json
+    chown root:root /home/ubuntu/todoapp/letsencrypt/acme.json
 
-- name: setup ssl cert
+- name: Update DuckDNS with server IP
   become: true
   shell: |
     curl "https://www.duckdns.org/update?domains={{ domain }}&token={{ duckdns_token }}&ip={{ ansible_host }}"
+    sleep 10
+
+- name: Verify DNS propagation
+  become: true
+  shell: |
+    for i in {1..6}; do
+      if nslookup {{ domain }} | grep {{ ansible_host }}; then
+        echo "DNS propagated successfully"
+        break
+      fi
+      echo "Waiting for DNS propagation... attempt $i/6"
+      sleep 10
+    done
 
 - name: Copy environment file
   template:
@@ -52,3 +65,49 @@
     cd /home/ubuntu/todoapp && docker compose up -d
   args:
     executable: /bin/bash
+
+- name: Wait for Traefik to start and generate certificates
+  become: true
+  shell: |
+    echo "Waiting for Traefik to start..."
+    sleep 30
+    
+    # Check if Traefik is running
+    if docker ps | grep traefik; then
+      echo "Traefik is running"
+    else
+      echo "ERROR: Traefik failed to start"
+      docker logs $(docker ps -aq -f name=traefik) || true
+      exit 1
+    fi
+    
+    # Wait for certificate generation
+    echo "Waiting for SSL certificate generation..."
+    for i in {1..12}; do
+      if [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ] && [ "$(cat /home/ubuntu/todoapp/letsencrypt/acme.json)" != "{}" ]; then
+        echo "SSL certificates generated successfully"
+        break
+      fi
+      echo "Waiting for certificates... attempt $i/12"
+      sleep 10
+    done
+
+- name: Verify SSL certificate status
+  become: true
+  shell: |
+    echo "=== SSL Certificate Status ==="
+    ls -la /home/ubuntu/todoapp/letsencrypt/acme.json
+    
+    if [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ]; then
+      echo "Certificate file exists and has content"
+      # Show certificate info without exposing private keys
+      cat /home/ubuntu/todoapp/letsencrypt/acme.json | jq 'keys' 2>/dev/null || echo "Certificate data present"
+    else
+      echo "WARNING: Certificate file is empty or missing"
+      echo "Checking Traefik logs for SSL issues:"
+      docker logs $(docker ps -q -f name=traefik) --tail 20 || true
+    fi
+    
+    echo "=== Testing HTTPS connection ==="
+    curl -I https://{{ domain }} --max-time 10 --insecure || echo "HTTPS test failed"
+  failed_when: false
