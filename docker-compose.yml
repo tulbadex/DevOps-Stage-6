@@ -142,8 +142,8 @@ services:
     image: openzipkin/zipkin:latest
     ports:
       - "9411:9411"
-    env_file:
-      - .env
+    environment:
+      - STORAGE_TYPE=mem
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.zipkin.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/zipkin`)"

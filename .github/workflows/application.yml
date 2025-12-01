@@ -165,18 +165,19 @@ jobs:
           cd infra/terraform
           terraform init -input=false
           
-          # Check if infrastructure exists
-          if terraform show -json | jq -e '.values.root_module.resources[]' > /dev/null 2>&1; then
-            SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || echo "")
-            if [ -n "$SERVER_IP" ]; then
-              echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
-              echo "Found server IP: $SERVER_IP"
-            else
-              echo "Error: Infrastructure exists but no IP found"
-              exit 1
-            fi
+          # Check if state file exists and has resources
+          if [ ! -f terraform.tfstate ] || [ ! -s terraform.tfstate ]; then
+            echo "No terraform state found. Please run infrastructure pipeline first."
+            exit 1
+          fi
+          
+          # Try to get server IP
+          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || echo "")
+          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
+            echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
+            echo "Found server IP: $SERVER_IP"
           else
-            echo "No infrastructure found. This appears to be a first deployment."
+            echo "No server IP found in terraform state."
             echo "Please run the infrastructure pipeline first to create the server."
             exit 1
           fi

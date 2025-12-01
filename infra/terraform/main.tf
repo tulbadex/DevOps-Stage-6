@@ -2,6 +2,27 @@ provider "aws" {
   region = var.aws_region
 }
 
+# S3 bucket for Terraform state - create if doesn't exist
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "hng13-stage6-terraform-state"
+}
+
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 locals {
   security_group_id = length(data.aws_security_groups.existing_sg.ids) > 0 ? data.aws_security_groups.existing_sg.ids[0] : aws_security_group.app_sg[0].id
 }
