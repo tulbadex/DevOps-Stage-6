@@ -1,7 +1,7 @@
 ---
 # Deploy the application
 
-- name: clone / pull repo
+- name: Clone the repository
   become: true
   git:
     repo: "{{ github_repo }}"
@@ -9,21 +9,7 @@
     version: "{{ github_branch }}"
     force: yes
 
-- name: fix repository ownership
-  become: true
-  file:
-    path: /home/ubuntu/todoapp
-    owner: ubuntu
-    group: ubuntu
-    recurse: yes
-
-- name: fix git safe directory
-  become: true
-  shell: |
-    git config --global --add safe.directory /home/ubuntu/todoapp
-  become_user: ubuntu
-
-- name: create letsencrypt directory
+- name: Create letsencrypt directory
   become: true
   file:
     path: /home/ubuntu/todoapp/letsencrypt
@@ -32,89 +18,37 @@
     owner: ubuntu
     group: ubuntu
 
-- name: set correct permissions for acme.json
+- name: Set correct permissions for acme.json
   become: true
   file:
     path: /home/ubuntu/todoapp/letsencrypt/acme.json
     state: touch
     mode: '0600'
-    owner: root
-    group: root
-
-- name: ensure acme.json is empty for fresh start
-  become: true
-  shell: |
-    echo '{}' > /home/ubuntu/todoapp/letsencrypt/acme.json
-    chmod 600 /home/ubuntu/todoapp/letsencrypt/acme.json
 
 - name: setup ssl cert
   become: true
   shell: |
     curl "https://www.duckdns.org/update?domains={{ domain }}&token={{ duckdns_token }}&ip={{ ansible_host }}"
 
-- name: template .env file
-  become: true
+- name: Copy environment file
   template:
     src: ../../templates/.env.j2
-    dest: /home/ubuntu/todoapp/.env
+    dest: "/home/ubuntu/todoapp/.env"
     owner: ubuntu
     group: ubuntu
     mode: '0644'
 
-- name: create docker network
+- name: Create docker network
   become: true
   shell: |
     docker network inspect app-network >/dev/null 2>&1 || docker network create app-network
   args:
     executable: /bin/bash
 
-- name: create docker-compose override with correct domain
-  become: true
-  template:
-    src: docker-compose.override.yml.j2
-    dest: /home/ubuntu/todoapp/docker-compose.override.yml
-    owner: ubuntu
-    group: ubuntu
 
-- name: start application with docker compose
+- name: Start application with Docker Compose
   become: true
   shell: |
     cd /home/ubuntu/todoapp && docker compose up -d
   args:
     executable: /bin/bash
-
-- name: wait for traefik to start
-  become: true
-  shell: |
-    sleep 30
-    # Check if Traefik is running
-    docker ps | grep traefik
-    # Check Traefik logs for SSL issues
-    docker logs $(docker ps -q -f name=traefik) | tail -20 || true
-
-- name: verify domain configuration
-  become: true
-  shell: |
-    echo "Checking domain configuration..."
-    echo "Domain from .env file:"
-    grep DOMAIN /home/ubuntu/todoapp/.env || echo "DOMAIN not found in .env"
-    echo "\nChecking Traefik API for registered routes:"
-    curl -s http://localhost:8088/api/http/routers | jq '.[].rule' 2>/dev/null || echo "Could not fetch Traefik routes"
-    echo "\nChecking if domain resolves to this server:"
-    nslookup {{ domain }} || echo "DNS resolution failed"
-
-- name: verify ssl certificate generation
-  become: true
-  shell: |
-    # Wait a bit more for SSL cert generation
-    sleep 60
-    # Check if certificates were generated
-    if [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ]; then
-      echo "SSL certificates found in acme.json"
-      cat /home/ubuntu/todoapp/letsencrypt/acme.json | jq . || echo "acme.json content exists but not valid JSON yet"
-    else
-      echo "WARNING: acme.json is empty - SSL certificates not generated yet"
-      echo "This is normal on first run - certificates will be generated when first HTTPS request is made"
-      echo "Try accessing: https://{{ domain }}"
-    fi
-  failed_when: false

@@ -1,74 +1,45 @@
-- name: wait for apt lock to be released
+- name: Add Docker GPG apt key
+  become: true
   shell: |
-    timeout=300
-    elapsed=0
-    while [ $elapsed -lt $timeout ]; do
-      if ! fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; then
-        if ! pgrep -x apt-get >/dev/null && ! pgrep -x dpkg >/dev/null && ! pgrep -x apt >/dev/null; then
-          echo "All apt locks released"
-          break
-        fi
-      fi
-      echo "Waiting for apt lock to be released... ($elapsed/$timeout)"
-      sleep 10
-      elapsed=$((elapsed + 10))
-    done
-    if [ $elapsed -ge $timeout ]; then
-      echo "Timeout waiting for apt lock, attempting to continue"
-    fi
-  become: yes
+    sudo apt-get update
+    sudo apt-get install ca-certificates curl
+    sudo install -m 0755 -d /etc/apt/keyrings
+    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-- name: update apt cache
-  apt: update_cache=yes cache_valid_time=3600
-  become: yes
+- name: Add Docker repository
+  become: true
+  shell: |
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update
 
-- name: install base packages
-  apt:
-    name:
-      - apt-transport-https
-      - ca-certificates
-      - curl
-      - gnupg
-      - lsb-release
-      - git
-      - python3-pip
-    state: present
-  become: yes
-  retries: 3
-  delay: 30
-  register: result
-  until: result is succeeded
-
-- name: add Docker GPG key
-  apt_key:
-    url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
-  become: yes
-
-- name: add Docker repo
-  apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-    state: present
-  become: yes
-
-- name: install Docker & compose plugin
+- name: Install Docker
   apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
+      - docker-buildx-plugin
       - docker-compose-plugin
     state: present
-  become: yes
-  retries: 3
-  delay: 30
-  register: result
-  until: result is succeeded
+    update_cache: yes
 
-- name: add ubuntu to docker group
-  user: name=ubuntu groups=docker append=yes
-  become: yes
+- name: Ensure Docker group exists
+  group:
+    name: docker
+    state: present
 
-- name: enable docker
-  systemd: name=docker enabled=yes state=started
-  become: yes
+- name: Add user to docker group
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes
+
+- name: Start Docker service
+  service:
+    name: docker
+    state: started
+    enabled: yes
