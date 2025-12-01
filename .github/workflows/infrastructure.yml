@@ -19,9 +19,9 @@ env:
   TF_VAR_private_key_path: ./ssh-key.pem
   TF_VAR_github_repo: ${{ github.server_url }}/${{ github.repository }}.git
   TF_VAR_github_branch: ${{ github.ref_name }}
-  TF_VAR_email: ${{ secrets.EMAIL_ALERT }}
-  TF_VAR_domain: ${{ secrets.DOMAIN }}
-  TF_VAR_email_ses: ${{ secrets.EMAIL_ALERT }}
+  TF_VAR_email: ${{ vars.EMAIL_ALERT }}
+  TF_VAR_domain: ${{ vars.DOMAIN }}
+  TF_VAR_email_ses: ${{ vars.EMAIL_ALERT }}
   TF_VAR_duckdns_token: ${{ secrets.DUCKDNS_TOKEN }}
 
 concurrency:
@@ -103,11 +103,11 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
+          username: ${{ vars.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: '🚨 INFRASTRUCTURE DRIFT DETECTED - Manual Approval Required'
-          to: ${{ secrets.EMAIL_ALERT }}
-          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
           body: |
             ## 🚨 Infrastructure Drift Alert
             
@@ -212,8 +212,8 @@ jobs:
           ${{ steps.apply.outputs.server_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=./ssh-key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
           
           [app_servers:vars]
-          domain=${{ secrets.DOMAIN }}
-          email=${{ secrets.EMAIL_ALERT }}
+          domain=${{ vars.DOMAIN }}
+          email=${{ vars.EMAIL_ALERT }}
           duckdns_token=${{ secrets.DUCKDNS_TOKEN }}
           github_repo=${{ github.server_url }}/${{ github.repository }}.git
           github_branch=${{ github.ref_name }}
@@ -252,18 +252,18 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
+          username: ${{ vars.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: '✅ Infrastructure Deployment Successful'
-          to: ${{ secrets.EMAIL_ALERT }}
-          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
           body: |
             ## ✅ Infrastructure Deployment Complete
             
             **Project:** HNG13 Stage 6 DevOps
             **Status:** Successfully deployed
             **Server IP:** ${{ steps.apply.outputs.server_ip }}
-            **Domain:** https://${{ secrets.DOMAIN }}
+            **Domain:** https://${{ vars.DOMAIN }}
             
             ### What was deployed:
             - Infrastructure provisioned with Terraform
@@ -273,10 +273,10 @@ jobs:
             - Traefik reverse proxy setup
             
             ### Access your application:
-            🌐 **Frontend:** https://${{ secrets.DOMAIN }}
-            🔐 **Auth API:** https://${{ secrets.DOMAIN }}/api/auth
-            📝 **Todos API:** https://${{ secrets.DOMAIN }}/api/todos
-            👥 **Users API:** https://${{ secrets.DOMAIN }}/api/users
+            🌐 **Frontend:** https://${{ vars.DOMAIN }}
+            🔐 **Auth API:** https://${{ vars.DOMAIN }}/api/auth
+            📝 **Todos API:** https://${{ vars.DOMAIN }}/api/todos
+            👥 **Users API:** https://${{ vars.DOMAIN }}/api/users
             
             ### Next Steps:
             - Test your application functionality
@@ -294,11 +294,11 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
+          username: ${{ vars.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: '❌ Infrastructure Deployment Failed'
-          to: ${{ secrets.EMAIL_ALERT }}
-          from: 'DevOps Pipeline <${{ secrets.SMTP_USERNAME }}>'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
           body: |
             ## ❌ Infrastructure Deployment Failed
             
