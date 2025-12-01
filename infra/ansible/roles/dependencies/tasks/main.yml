@@ -45,11 +45,12 @@
     groups: docker
     append: yes
 
-- name: Install Python Docker SDK
-  pip:
+- name: Install Python Docker SDK via apt
+  apt:
     name:
-      - docker
+      - python3-docker
     state: present
+    update_cache: yes
 
 - name: Test Docker installation
   command: docker --version

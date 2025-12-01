@@ -86,6 +86,7 @@ resource "aws_instance" "app_server" {
 ${self.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=${var.private_key_path} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 
 [app_servers:vars]
+ansible_python_interpreter=/usr/bin/python3
 domain=${var.domain}
 email=${var.email}
 duckdns_token=${var.duckdns_token}
