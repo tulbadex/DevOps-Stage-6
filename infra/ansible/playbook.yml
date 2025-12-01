@@ -3,6 +3,20 @@
   hosts: app_servers
   gather_facts: yes
   become: yes
+  
+  pre_tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        timeout: 300
+  
   roles:
     - dependencies
     - deploy
+  
+  post_tasks:
+    - name: Display deployment status
+      debug:
+        msg:
+          - "Deployment completed successfully!"
+          - "Application URL: https://{{ domain }}"
+          - "Server IP: {{ ansible_host }}"

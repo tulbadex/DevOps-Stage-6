@@ -8,6 +8,14 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+  
+  default_tags {
+    tags = {
+      Project     = "HNG13-DevOps-Stage6"
+      ManagedBy   = "Terraform"
+      Environment = "production"
+    }
+  }
 }
 
 # Import existing S3 bucket or create if doesn't exist

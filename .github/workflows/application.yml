@@ -175,7 +175,7 @@ jobs:
           fi
           
           # Get server IP
-          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
+          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || terraform output -raw instance_public_ip 2>/dev/null || echo "")
           
           if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
             echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
