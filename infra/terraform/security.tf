@@ -4,20 +4,7 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# Try to find existing security group first
-data "aws_security_groups" "existing_sg" {
-  filter {
-    name   = "group-name"
-    values = ["${var.instance_name}-sg"]
-  }
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
 resource "aws_security_group" "app_sg" {
-  count       = length(data.aws_security_groups.existing_sg.ids) == 0 ? 1 : 0
   name        = "${var.instance_name}-sg"
   description = "Allow traffic for ToDo application"
   vpc_id      = data.aws_vpc.default.id
