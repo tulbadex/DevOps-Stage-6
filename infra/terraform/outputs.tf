@@ -17,3 +17,8 @@ output "ssh_command" {
 output "public_ip_raw" {
   value = aws_instance.app_server.public_ip
 }
+
+output "instance_ip" {
+  value = aws_instance.app_server.public_ip
+  description = "The public IP address for CI/CD pipeline"
+}
