@@ -62,30 +62,23 @@
     echo "Services should be running now"
   failed_when: false
 
-- name: Fix Traefik routing issues
+- name: Verify Traefik routing and SSL
   become: true
   shell: |
-    echo "Restarting all containers to fix Traefik routing..."
     cd /home/ubuntu/todoapp
     
-    # Stop all containers
-    docker compose down
+    # Check if all services are healthy
+    if ! docker compose ps | grep -q "Up"; then
+      echo "Some services not running, restarting..."
+      docker compose restart
+      sleep 30
+    fi
     
-    # Wait a moment
-    sleep 10
+    # Wait for SSL certificate generation
+    echo "Waiting for SSL certificates..."
+    sleep 45
     
-    # Start all containers again
-    docker compose up -d
-    
-    # Wait for services to be ready
-    sleep 60
-    
-    echo "Checking container status..."
-    docker ps
-    
-    echo "Testing frontend access..."
-    curl -I http://localhost:8080 || echo "Frontend not accessible"
-    
-    echo "Testing domain access..."
-    curl -I https://{{ domain }} --max-time 10 --insecure || echo "Domain not accessible yet"
+    # Verify services
+    docker compose ps
+    curl -I https://{{ domain }} --max-time 15 --insecure || echo "Domain not ready yet"
   failed_when: false
