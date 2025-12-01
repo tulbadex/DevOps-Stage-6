@@ -159,23 +159,30 @@ jobs:
           terraform_version: 1.9.8
           terraform_wrapper: false
 
-      - name: Get server IP from Terraform
+      - name: Get server IP from infrastructure
         id: server
         run: |
+          # Check if infrastructure workflow has run and get IP from artifacts or API
+          # For now, try terraform state, if empty, suggest running infrastructure first
           cd infra/terraform
           terraform init -input=false
           
-          # Try to get server IP from state (try multiple output names)
+          # Check if state has any resources
+          if ! terraform state list 2>/dev/null | grep -q "aws_instance"; then
+            echo "No EC2 instance found in terraform state."
+            echo "Please run the infrastructure pipeline first to create the server."
+            exit 1
+          fi
+          
+          # Get server IP
           SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
           
-          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
+          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
             echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
             echo "Found server IP: $SERVER_IP"
           else
-            echo "No server IP found in terraform state."
-            echo "Available outputs:"
-            terraform output 2>/dev/null || echo "No outputs available"
-            echo "Please run the infrastructure pipeline first to create the server."
+            echo "Server exists but no IP output found. This shouldn't happen."
+            terraform state show aws_instance.app_server | grep public_ip || echo "No public IP in state"
             exit 1
           fi
 
