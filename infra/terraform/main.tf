@@ -20,8 +20,8 @@ resource "aws_instance" "app_server" {
     encrypted   = true
   }
 
-  /* one-shot Ansible run */
-    provisioner "local-exec" {
+  /* Ansible deployment after server creation */
+  provisioner "local-exec" {
     command = <<-EOT
       set -e
       echo "Waiting for SSH on ${self.public_ip} …"
@@ -39,7 +39,17 @@ resource "aws_instance" "app_server" {
       echo "Waiting for system initialization to complete..."
       sleep 120
       echo "Writing inventory …"
-      ../scripts/gen_inventory.sh ${self.public_ip} > ../ansible/inventory
+      cat > ../ansible/inventory << EOF
+[app_servers]
+${self.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=${var.private_key_path} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[app_servers:vars]
+domain=${var.domain}
+email=${var.email}
+duckdns_token=${var.duckdns_token}
+github_repo=${var.github_repo}
+github_branch=${var.github_branch}
+EOF
       echo "Running Ansible …"
       ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ../ansible/inventory ../ansible/playbook.yml -vv
     EOT
