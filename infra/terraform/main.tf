@@ -2,11 +2,15 @@ provider "aws" {
   region = var.aws_region
 }
 
+locals {
+  security_group_id = length(data.aws_security_groups.existing_sg.ids) > 0 ? data.aws_security_groups.existing_sg.ids[0] : aws_security_group.app_sg[0].id
+}
+
 resource "aws_instance" "app_server" {
   ami                         = var.ami_id
   instance_type               = var.instance_type
   key_name                    = var.ssh_key_name
-  vpc_security_group_ids      = [aws_security_group.app_sg.id]
+  vpc_security_group_ids      = [local.security_group_id]
   associate_public_ip_address = true
   user_data                   = base64encode(templatefile("${path.module}/user_data.sh", {}))
 
