@@ -101,8 +101,6 @@ services:
       - "traefik.http.routers.auth-api.entrypoints=websecure"
       - "traefik.http.routers.auth-api.tls=true"
       - "traefik.http.routers.auth-api.tls.certresolver=letsencrypt-staging"
-      - "traefik.http.routers.auth-api.middlewares=auth-api-strip"
-
       - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
       - "traefik.http.middlewares.auth-api-strip.stripprefix.prefixes=/api/auth"
       - "traefik.http.routers.auth-api.middlewares=auth-api-strip"
@@ -125,8 +123,6 @@ services:
       - "traefik.http.routers.todos-api.entrypoints=websecure"
       - "traefik.http.routers.todos-api.tls=true"
       - "traefik.http.routers.todos-api.tls.certresolver=letsencrypt-staging"
-      - "traefik.http.routers.todos-api.middlewares=todos-api-strip"
-
       - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
       - "traefik.http.middlewares.todos-api-strip.stripprefix.prefixes=/api/todos"
       - "traefik.http.routers.todos-api.middlewares=todos-api-strip"
@@ -149,8 +145,6 @@ services:
       - "traefik.http.routers.users-api.entrypoints=websecure"
       - "traefik.http.routers.users-api.tls=true"
       - "traefik.http.routers.users-api.tls.certresolver=letsencrypt-staging"
-      - "traefik.http.routers.users-api.middlewares=users-api-strip"
-
       - "traefik.http.services.users-api.loadbalancer.server.port=8083"
       - "traefik.http.middlewares.users-api-strip.stripprefix.prefixes=/api/users"
       - "traefik.http.routers.users-api.middlewares=users-api-strip"

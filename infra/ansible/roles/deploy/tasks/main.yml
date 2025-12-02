@@ -105,21 +105,35 @@
 - name: Wait for domain to resolve
   shell: |
     echo "Waiting for domain {{ domain }} to resolve to {{ ansible_host }}..."
-    for i in {1..30}; do
+    for i in {1..60}; do
       RESOLVED_IP=$(dig +short {{ domain }} | tail -n1)
       if [ "$RESOLVED_IP" = "{{ ansible_host }}" ]; then
         echo "Domain resolved correctly!"
+        # Verify with multiple DNS servers
+        GOOGLE_DNS=$(dig @8.8.8.8 +short {{ domain }} | tail -n1)
+        CLOUDFLARE_DNS=$(dig @1.1.1.1 +short {{ domain }} | tail -n1)
+        echo "Google DNS: $GOOGLE_DNS, Cloudflare DNS: $CLOUDFLARE_DNS"
         break
       fi
-      echo "Attempt $i/30: Domain resolves to $RESOLVED_IP, expected {{ ansible_host }}"
-      sleep 10
+      echo "Attempt $i/60: Domain resolves to $RESOLVED_IP, expected {{ ansible_host }}"
+      sleep 15
     done
   ignore_errors: yes
+  tags: [deploy]
 
 - name: Update DuckDNS with server IP
   shell: |
-    curl "https://www.duckdns.org/update?domains={{ domain }}&token={{ duckdns_token }}&ip={{ ansible_host }}"
+    DOMAIN_NAME=$(echo "{{ domain }}" | cut -d'.' -f1)
+    echo "Updating DuckDNS for domain: $DOMAIN_NAME with IP: {{ ansible_host }}"
+    RESPONSE=$(curl -s "https://www.duckdns.org/update?domains=$DOMAIN_NAME&token={{ duckdns_token }}&ip={{ ansible_host }}")
+    echo "DuckDNS response: $RESPONSE"
+    if [ "$RESPONSE" = "OK" ]; then
+      echo "DuckDNS update successful"
+    else
+      echo "DuckDNS update failed: $RESPONSE"
+    fi
   failed_when: false
+  tags: [deploy]
 
 - name: Stop existing containers
   shell: sudo -u ubuntu docker compose down
