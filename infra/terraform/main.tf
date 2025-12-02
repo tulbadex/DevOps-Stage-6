@@ -100,6 +100,7 @@ EOF
     Name        = var.instance_name
     Domain      = var.domain
     Environment = "production"
+    Monitoring  = "enabled"
     UpdatedAt   = timestamp()
   }
 
