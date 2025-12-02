@@ -5,6 +5,7 @@
   stat:
     path: /home/ubuntu/todoapp/.git
   register: git_repo
+  tags: [deploy]
 
 - name: Clone repository if not exists
   git:
@@ -14,6 +15,7 @@
     force: yes
   become_user: ubuntu
   when: not git_repo.stat.exists
+  tags: [deploy]
 
 - name: Pull latest changes from repository
   git:
@@ -25,6 +27,7 @@
   become_user: ubuntu
   register: git_pull
   when: git_repo.stat.exists
+  tags: [deploy]
 
 - name: Force git pull to ensure latest changes
   shell: |
@@ -36,6 +39,25 @@
   when: git_repo.stat.exists
   register: force_git_pull
   ignore_errors: yes
+  tags: [deploy]
+
+- name: Show git status after pull
+  shell: |
+    cd /home/ubuntu/todoapp
+    echo "Current commit:"
+    git log --oneline -1
+    echo "Git status:"
+    git status --porcelain
+  become_user: ubuntu
+  when: git_repo.stat.exists
+  register: git_status
+  tags: [deploy]
+
+- name: Display git status
+  debug:
+    var: git_status.stdout_lines
+  when: git_repo.stat.exists
+  tags: [deploy]
 
 - name: Create .env file from template
   template:
@@ -92,12 +114,14 @@
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
+  tags: [deploy]
 
 - name: Pull latest Docker images
   shell: sudo -u ubuntu docker compose pull
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
+  tags: [deploy]
 
 - name: Create docker network
   shell: |
@@ -109,6 +133,7 @@
   args:
     chdir: /home/ubuntu/todoapp
   register: compose_result
+  tags: [deploy]
 
 - name: Wait for services to be healthy
   pause:
