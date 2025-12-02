@@ -22,13 +22,17 @@ services:
       - "--api.insecure=true"
       - "--accesslog=true"
       - "--log.level=INFO"
+    dns:
+      - "8.8.8.8"
+      - "1.1.1.1"
     ports:
       - "80:80"
       - "443:443"
       - "8088:8080"
     env_file:
       - .env
-
+    extra_hosts:
+      - "${DOMAIN}:127.0.0.1"
     volumes:
       - ./letsencrypt:/letsencrypt:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
