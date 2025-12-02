@@ -35,21 +35,18 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
+
+      - "traefik.http.middlewares.cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.cors.headers.accesscontrolmaxage=900"
+      - "traefik.http.middlewares.cors.headers.addvaryheader=true"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
       - "traefik.http.routers.http-catchall.priority=10"
-      - "traefik.http.middlewares.secure-headers.headers.sslredirect=true"
-      - "traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000"
-      - "traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true"
-      - "traefik.http.middlewares.secure-headers.headers.stsPreload=true"
-      - "traefik.http.middlewares.cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS"
-      - "traefik.http.middlewares.cors.headers.accesscontrolalloworiginlist=*"
-      - "traefik.http.middlewares.cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
-      - "traefik.http.middlewares.cors.headers.accesscontrolmaxage=600"
-      - "traefik.http.middlewares.cors.headers.addvaryheader=true"
     networks:
       - app-network
 
@@ -63,13 +60,14 @@ services:
       - .env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend-http.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend-http.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.frontend-http.entrypoints=web"
       - "traefik.http.routers.frontend-http.middlewares=redirect-to-https"
       - "traefik.http.routers.frontend.tls=true"
       - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+
 
       - "traefik.http.services.frontend.loadbalancer.server.port=8080"
     networks:
@@ -88,10 +86,11 @@ services:
       - .env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
       - "traefik.http.routers.auth-api.entrypoints=websecure"
       - "traefik.http.routers.auth-api.tls=true"
       - "traefik.http.routers.auth-api.tls.certresolver=myresolver"
+
       - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
       - "traefik.http.middlewares.auth-api-strip.stripprefix.prefixes=/api/auth"
       - "traefik.http.routers.auth-api.middlewares=auth-api-strip"
@@ -110,10 +109,11 @@ services:
       - .env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/todos`)"
+      - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/todos`)"
       - "traefik.http.routers.todos-api.entrypoints=websecure"
       - "traefik.http.routers.todos-api.tls=true"
       - "traefik.http.routers.todos-api.tls.certresolver=myresolver"
+
       - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
       - "traefik.http.middlewares.todos-api-strip.stripprefix.prefixes=/api/todos"
       - "traefik.http.routers.todos-api.middlewares=todos-api-strip"
@@ -132,10 +132,11 @@ services:
       - .env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.users-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/users`)"
       - "traefik.http.routers.users-api.entrypoints=websecure"
       - "traefik.http.routers.users-api.tls=true"
       - "traefik.http.routers.users-api.tls.certresolver=myresolver"
+
       - "traefik.http.services.users-api.loadbalancer.server.port=8083"
       - "traefik.http.middlewares.users-api-strip.stripprefix.prefixes=/api/users"
       - "traefik.http.routers.users-api.middlewares=users-api-strip"
@@ -168,10 +169,11 @@ services:
       - STORAGE_TYPE=mem
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.zipkin.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/zipkin`)"
+      - "traefik.http.routers.zipkin.rule=Host(`${DOMAIN}`) && PathPrefix(`/zipkin`)"
       - "traefik.http.routers.zipkin.entrypoints=websecure"
       - "traefik.http.routers.zipkin.tls=true"
       - "traefik.http.routers.zipkin.tls.certresolver=myresolver"
+
       - "traefik.http.services.zipkin.loadbalancer.server.port=9411"
     networks:
       - app-network
