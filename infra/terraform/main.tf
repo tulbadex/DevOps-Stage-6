@@ -35,7 +35,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 }
 
 locals {
-  security_group_id = aws_security_group.app_sg.id
+  security_group_id = data.aws_security_group.app_sg.id
 }
 
 resource "aws_instance" "app_server" {
@@ -110,6 +110,21 @@ EOF
 /*------------------------------------------------
  Outputs
 ------------------------------------------------*/
+output "instance_ip" {
+  value = aws_instance.app_server.public_ip
+  description = "Public IP address of the EC2 instance"
+}
+
+output "public_ip" {
+  value = aws_instance.app_server.public_ip
+  description = "Public IP address of the EC2 instance"
+}
+
+output "instance_public_ip" {
+  value = aws_instance.app_server.public_ip
+  description = "Public IP address of the EC2 instance"
+}
+
 output "application_url" {
   value = "https://${var.domain}"   # <= now gives the real URL
 }

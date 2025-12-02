@@ -179,21 +179,22 @@ jobs:
           terraform init -input=false
           
           # Check if state has any resources
-          if ! terraform state list 2>/dev/null | grep -q "aws_instance"; then
+          INSTANCE_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_instance" || echo "0")
+          if [ "$INSTANCE_COUNT" -eq "0" ]; then
             echo "No EC2 instance found in terraform state."
             echo "Please run the infrastructure pipeline first to create the server."
             exit 1
           fi
           
-          # Get server IP
-          SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || terraform output -raw instance_public_ip 2>/dev/null || echo "")
+          # Get server IP from terraform state directly
+          SERVER_IP=$(terraform state show aws_instance.app_server 2>/dev/null | grep "public_ip" | grep -v "associate_public_ip" | head -1 | awk '{print $3}' | tr -d '"' || echo "")
           
-          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ]; then
+          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
             echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
             echo "Found server IP: $SERVER_IP"
           else
-            echo "Server exists but no IP output found. This shouldn't happen."
-            terraform state show aws_instance.app_server | grep public_ip || echo "No public IP in state"
+            echo "Server exists but no public IP found. Checking state..."
+            terraform state show aws_instance.app_server | grep -E "public_ip|private_ip" || echo "No IP addresses in state"
             exit 1
           fi
 
