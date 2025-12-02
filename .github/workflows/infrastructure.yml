@@ -56,25 +56,32 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ./ssh-key.pem
           chmod 600 ./ssh-key.pem
 
-      - name: Create S3 bucket first (without backend)
+      - name: Setup S3 bucket for backend
         run: |
           cd infra/terraform
-          # Temporarily rename backend.tf to disable S3 backend
-          mv backend.tf backend.tf.disabled
-          # Initialize without backend
-          terraform init -input=false
           
-          # Try to import existing bucket first
-          terraform import aws_s3_bucket.terraform_state hng13-stage6-terraform-state || echo "Bucket doesn't exist, will create"
-          
-          # Apply to create/configure S3 bucket
-          terraform apply -target=aws_s3_bucket.terraform_state -target=aws_s3_bucket_versioning.terraform_state -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state -auto-approve
-
-      - name: Configure S3 backend
-        run: |
-          cd infra/terraform
-          # Restore backend configuration
-          mv backend.tf.disabled backend.tf
+          # Check if S3 bucket exists
+          if aws s3api head-bucket --bucket "hng13-stage6-terraform-state" 2>/dev/null; then
+            echo "S3 bucket already exists, proceeding with backend initialization"
+          else
+            echo "S3 bucket doesn't exist, creating with local backend first"
+            
+            # Temporarily disable S3 backend
+            if [ -f "backend.tf" ]; then
+              mv backend.tf backend.tf.temp
+            fi
+            
+            # Initialize without backend
+            terraform init -input=false
+            
+            # Create S3 bucket and related resources
+            terraform apply -target=aws_s3_bucket.terraform_state -target=aws_s3_bucket_versioning.terraform_state -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state -auto-approve
+            
+            # Restore backend configuration
+            if [ -f "backend.tf.temp" ]; then
+              mv backend.tf.temp backend.tf
+            fi
+          fi
           
       - name: Terraform Init with S3 backend
         run: |
