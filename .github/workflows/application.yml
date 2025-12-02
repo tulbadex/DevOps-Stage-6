@@ -143,11 +143,68 @@ jobs:
     if: needs.detect-changes.outputs.deploy-needed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for infrastructure pipeline
+      - name: Wait for infrastructure pipeline completion
         run: |
-          echo "Checking if infrastructure pipeline is running..."
-          # Wait for any running infrastructure workflows to complete
-          sleep 30
+          echo "Checking for running infrastructure workflows..."
+          
+          # Check for running infrastructure workflows
+          RUNNING_WORKFLOWS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows" | \
+            jq -r '.workflows[] | select(.name == "Infrastructure Pipeline") | .id')
+          
+          if [ -n "$RUNNING_WORKFLOWS" ]; then
+            for workflow_id in $RUNNING_WORKFLOWS; do
+              echo "Checking workflow ID: $workflow_id"
+              
+              # Get running workflow runs
+              RUNNING_RUNS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+                "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$workflow_id/runs?status=in_progress" | \
+                jq -r '.workflow_runs[].id')
+              
+              if [ -n "$RUNNING_RUNS" ]; then
+                echo "Found running infrastructure workflows. Waiting for completion..."
+                
+                for run_id in $RUNNING_RUNS; do
+                  echo "Waiting for workflow run $run_id to complete..."
+                  
+                  # Wait up to 30 minutes for infrastructure to complete
+                  for i in {1..60}; do
+                    STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+                      "https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id" | \
+                      jq -r '.status')
+                    
+                    if [ "$STATUS" = "completed" ]; then
+                      CONCLUSION=$(curl -s -H "Authorization: token ${{ github.token }}" \
+                        "https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id" | \
+                        jq -r '.conclusion')
+                      
+                      echo "Infrastructure workflow completed with status: $CONCLUSION"
+                      
+                      if [ "$CONCLUSION" != "success" ]; then
+                        echo "Infrastructure workflow failed. Cannot proceed with application deployment."
+                        exit 1
+                      fi
+                      break
+                    fi
+                    
+                    echo "Infrastructure still running (attempt $i/60). Waiting 30 seconds..."
+                    sleep 30
+                  done
+                  
+                  if [ "$STATUS" != "completed" ]; then
+                    echo "Infrastructure workflow timed out after 30 minutes"
+                    exit 1
+                  fi
+                done
+              else
+                echo "No running infrastructure workflows found"
+              fi
+            done
+          else
+            echo "No infrastructure workflows found"
+          fi
+          
+          echo "Infrastructure check completed. Proceeding with application deployment."
 
   deploy:
     needs: [detect-changes, build-and-test, wait-for-infrastructure]
@@ -173,27 +230,49 @@ jobs:
       - name: Get server IP from infrastructure
         id: server
         run: |
-          # Check if infrastructure workflow has run and get IP from artifacts or API
-          # For now, try terraform state, if empty, suggest running infrastructure first
           cd infra/terraform
-          terraform init -input=false
           
-          # Check if state has any resources
-          INSTANCE_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_instance" || echo "0")
+          # Initialize terraform with retries
+          for i in {1..3}; do
+            if terraform init -input=false; then
+              break
+            fi
+            echo "Terraform init failed (attempt $i/3). Retrying in 10 seconds..."
+            sleep 10
+          done
+          
+          # Check if state has any resources with retries
+          for i in {1..5}; do
+            INSTANCE_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_instance" || echo "0")
+            if [ "$INSTANCE_COUNT" -gt "0" ]; then
+              break
+            fi
+            echo "No instances found in state (attempt $i/5). Waiting for state sync..."
+            sleep 15
+          done
+          
           if [ "$INSTANCE_COUNT" -eq "0" ]; then
-            echo "No EC2 instance found in terraform state."
-            echo "Please run the infrastructure pipeline first to create the server."
+            echo "No EC2 instance found in terraform state after waiting."
+            echo "Infrastructure may not be deployed yet. Please run infrastructure pipeline first."
             exit 1
           fi
           
-          # Get server IP from terraform state directly
-          SERVER_IP=$(terraform state show aws_instance.app_server 2>/dev/null | grep "public_ip" | grep -v "associate_public_ip" | head -1 | awk '{print $3}' | tr -d '"' || echo "")
+          # Get server IP with multiple attempts
+          for i in {1..3}; do
+            SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
+            
+            if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
+              echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
+              echo "Found server IP: $SERVER_IP"
+              break
+            fi
+            
+            echo "Failed to get server IP (attempt $i/3). Retrying..."
+            sleep 10
+          done
           
-          if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
-            echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
-            echo "Found server IP: $SERVER_IP"
-          else
-            echo "Server exists but no public IP found. Checking state..."
+          if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "null" ]; then
+            echo "Could not retrieve server IP after multiple attempts"
             terraform state show aws_instance.app_server | grep -E "public_ip|private_ip" || echo "No IP addresses in state"
             exit 1
           fi

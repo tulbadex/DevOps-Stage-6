@@ -97,8 +97,10 @@ EOF
   }
 
   tags = {
-    Name   = var.instance_name
-    Domain = var.domain
+    Name        = var.instance_name
+    Domain      = var.domain
+    Environment = "production"
+    UpdatedAt   = timestamp()
   }
 
   lifecycle {
