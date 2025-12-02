@@ -66,7 +66,19 @@
     owner: ubuntu
     group: ubuntu
     mode: '0644'
+    force: yes
   register: env_file
+  tags: [deploy]
+
+- name: Show .env file contents
+  shell: cat /home/ubuntu/todoapp/.env
+  register: env_contents
+  tags: [deploy]
+
+- name: Display .env file contents
+  debug:
+    var: env_contents.stdout_lines
+  tags: [deploy]
 
 - name: Create letsencrypt directory
   file:
