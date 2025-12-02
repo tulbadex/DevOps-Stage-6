@@ -8,11 +8,16 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
 
-      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:-admin@example.com}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.keytype=RSA2048"
+      - "--certificatesresolvers.letsencrypt-staging.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt-staging.acme.storage=/letsencrypt/acme-staging.json"
+      - "--certificatesresolvers.letsencrypt-staging.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.letsencrypt-staging.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt-staging.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.keytype=RSA4096"
       - "--api.dashboard=true"
       - "--api.insecure=true"
       - "--accesslog=true"
@@ -46,7 +51,12 @@ services:
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
-      - "traefik.http.routers.http-catchall.priority=10"
+      - "traefik.http.routers.http-catchall.priority=1"
+      - "traefik.http.middlewares.secure-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.secure-headers.headers.stsSeconds=63072000"
+      - "traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.secure-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.secure-headers.headers.forceSTSHeader=true"
     networks:
       - app-network
 
@@ -66,7 +76,8 @@ services:
       - "traefik.http.routers.frontend-http.entrypoints=web"
       - "traefik.http.routers.frontend-http.middlewares=redirect-to-https"
       - "traefik.http.routers.frontend.tls=true"
-      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt-staging"
+      - "traefik.http.routers.frontend.middlewares=secure-headers"
 
 
       - "traefik.http.services.frontend.loadbalancer.server.port=8080"
@@ -89,7 +100,8 @@ services:
       - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
       - "traefik.http.routers.auth-api.entrypoints=websecure"
       - "traefik.http.routers.auth-api.tls=true"
-      - "traefik.http.routers.auth-api.tls.certresolver=myresolver"
+      - "traefik.http.routers.auth-api.tls.certresolver=letsencrypt-staging"
+      - "traefik.http.routers.auth-api.middlewares=auth-api-strip"
 
       - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
       - "traefik.http.middlewares.auth-api-strip.stripprefix.prefixes=/api/auth"
@@ -112,7 +124,8 @@ services:
       - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/todos`)"
       - "traefik.http.routers.todos-api.entrypoints=websecure"
       - "traefik.http.routers.todos-api.tls=true"
-      - "traefik.http.routers.todos-api.tls.certresolver=myresolver"
+      - "traefik.http.routers.todos-api.tls.certresolver=letsencrypt-staging"
+      - "traefik.http.routers.todos-api.middlewares=todos-api-strip"
 
       - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
       - "traefik.http.middlewares.todos-api-strip.stripprefix.prefixes=/api/todos"
@@ -135,7 +148,8 @@ services:
       - "traefik.http.routers.users-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/users`)"
       - "traefik.http.routers.users-api.entrypoints=websecure"
       - "traefik.http.routers.users-api.tls=true"
-      - "traefik.http.routers.users-api.tls.certresolver=myresolver"
+      - "traefik.http.routers.users-api.tls.certresolver=letsencrypt-staging"
+      - "traefik.http.routers.users-api.middlewares=users-api-strip"
 
       - "traefik.http.services.users-api.loadbalancer.server.port=8083"
       - "traefik.http.middlewares.users-api-strip.stripprefix.prefixes=/api/users"
@@ -172,7 +186,7 @@ services:
       - "traefik.http.routers.zipkin.rule=Host(`${DOMAIN}`) && PathPrefix(`/zipkin`)"
       - "traefik.http.routers.zipkin.entrypoints=websecure"
       - "traefik.http.routers.zipkin.tls=true"
-      - "traefik.http.routers.zipkin.tls.certresolver=myresolver"
+      - "traefik.http.routers.zipkin.tls.certresolver=letsencrypt-staging"
 
       - "traefik.http.services.zipkin.loadbalancer.server.port=9411"
     networks:

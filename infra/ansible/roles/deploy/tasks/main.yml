@@ -160,14 +160,17 @@
   debug:
     var: docker_ps.stdout_lines
 
-- name: Restart Traefik for SSL certificate refresh
+- name: Clean old certificates and restart Traefik
   shell: |
-    echo "Restarting Traefik to refresh SSL certificates..."
-    sudo -u ubuntu docker compose restart traefik
-    sleep 30
+    echo "Cleaning old certificates to avoid rate limit issues..."
+    sudo -u ubuntu docker compose down traefik
+    rm -f /home/ubuntu/todoapp/letsencrypt/acme*.json
+    sudo -u ubuntu docker compose up -d traefik
+    sleep 45
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
+  tags: [deploy]
 
 - name: Trigger SSL certificate generation if needed
   shell: |
