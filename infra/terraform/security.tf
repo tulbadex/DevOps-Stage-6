@@ -4,16 +4,7 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# Import existing security group if it exists
-data "aws_security_groups" "existing_sg" {
-  filter {
-    name   = "group-name"
-    values = ["${var.instance_name}-sg"]
-  }
-}
-
 resource "aws_security_group" "app_sg" {
-  count       = length(data.aws_security_groups.existing_sg.ids) > 0 ? 0 : 1
   name        = "${var.instance_name}-sg"
   description = "Allow traffic for ToDo application"
   vpc_id      = data.aws_vpc.default.id
@@ -61,10 +52,4 @@ resource "aws_security_group" "app_sg" {
   tags = {
     Name = "${var.instance_name}-sg"
   }
-}
-
-# Use existing security group if available, otherwise use the new one
-data "aws_security_group" "app_sg" {
-  name = "${var.instance_name}-sg"
-  depends_on = [aws_security_group.app_sg]
 }

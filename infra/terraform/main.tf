@@ -35,7 +35,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 }
 
 locals {
-  security_group_id = data.aws_security_group.app_sg.id
+  security_group_id = aws_security_group.app_sg.id
 }
 
 resource "aws_instance" "app_server" {

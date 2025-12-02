@@ -80,12 +80,31 @@ jobs:
         run: |
           cd infra/terraform
           terraform init -force-copy -input=false
+          
+      - name: Import existing resources if they exist
+        run: |
+          cd infra/terraform
+          
+          # Try to import existing security group
+          SG_ID=$(aws ec2 describe-security-groups --group-names "hng-stage6-web-server-sg" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "None")
+          if [ "$SG_ID" != "None" ] && [ "$SG_ID" != "null" ]; then
+            echo "Found existing security group: $SG_ID"
+            terraform import aws_security_group.app_sg $SG_ID || echo "Security group already in state or import failed"
+          fi
+          
+          # Try to import existing instance
+          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hng-stage6-web-server" "Name=instance-state-name,Values=running,stopped" --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || echo "None")
+          if [ "$INSTANCE_ID" != "None" ] && [ "$INSTANCE_ID" != "null" ]; then
+            echo "Found existing instance: $INSTANCE_ID"
+            terraform import aws_instance.app_server $INSTANCE_ID || echo "Instance already in state or import failed"
+          fi
 
       - name: Terraform Plan (Drift Detection)
         id: plan
         run: |
           set +e
-          terraform -chdir=infra/terraform plan -detailed-exitcode -out=tfplan -no-color > plan_output.txt 2>&1
+          cd infra/terraform
+          terraform plan -detailed-exitcode -out=tfplan -no-color > ../../plan_output.txt 2>&1
           EXIT_CODE=$?
           
           echo "exitcode=$EXIT_CODE" >> $GITHUB_OUTPUT
@@ -96,7 +115,7 @@ jobs:
           elif [ $EXIT_CODE -eq 1 ]; then
             echo "drift=error" >> $GITHUB_OUTPUT
             echo "Terraform plan failed with errors"
-            cat plan_output.txt
+            cat ../../plan_output.txt
             exit 1
           elif [ $EXIT_CODE -eq 2 ]; then
             echo "drift=true" >> $GITHUB_OUTPUT
@@ -106,7 +125,7 @@ jobs:
           # Add plan output to job summary
           echo "## Terraform Plan Output" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          cat plan_output.txt >> $GITHUB_STEP_SUMMARY
+          cat ../../plan_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Terraform Plan
