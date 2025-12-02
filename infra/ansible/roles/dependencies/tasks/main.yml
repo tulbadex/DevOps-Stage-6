@@ -45,6 +45,9 @@
     groups: docker
     append: yes
 
+- name: Reset ssh connection to allow user changes to affect ansible user
+  meta: reset_connection
+
 - name: Install Python Docker SDK via apt
   apt:
     name:

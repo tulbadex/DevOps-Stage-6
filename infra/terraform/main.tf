@@ -20,13 +20,22 @@ provider "aws" {
 
 # S3 bucket for Terraform state
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = "hng13-stage6-terraform-state"
+  bucket        = "hng13-stage6-terraform-state"
+  force_destroy = true
+  
+  lifecycle {
+    ignore_changes = [bucket]
+  }
 }
 
 resource "aws_s3_bucket_versioning" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
   versioning_configuration {
     status = "Enabled"
+  }
+  
+  lifecycle {
+    ignore_changes = [versioning_configuration]
   }
 }
 
@@ -36,6 +45,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
+  }
+  
+  lifecycle {
+    ignore_changes = [rule]
   }
 }
 

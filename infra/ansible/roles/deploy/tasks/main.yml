@@ -63,18 +63,16 @@
   failed_when: false
 
 - name: Stop existing containers if changes detected
-  shell: docker compose down
+  shell: sudo -u ubuntu docker compose down
   args:
     chdir: /home/ubuntu/todoapp
-  become_user: ubuntu
   when: git_pull.changed or env_file.changed
   ignore_errors: yes
 
 - name: Pull latest Docker images if changes detected
-  shell: docker compose pull
+  shell: sudo -u ubuntu docker compose pull
   args:
     chdir: /home/ubuntu/todoapp
-  become_user: ubuntu
   when: git_pull.changed or env_file.changed
   ignore_errors: yes
 
@@ -84,10 +82,9 @@
   ignore_errors: yes
 
 - name: Build and start Docker Compose services
-  shell: docker compose up -d --build
+  shell: sudo -u ubuntu docker compose up -d --build
   args:
     chdir: /home/ubuntu/todoapp
-  become_user: ubuntu
   register: compose_result
 
 - name: Wait for services to be healthy
@@ -95,8 +92,7 @@
     seconds: 45
 
 - name: Check running containers
-  command: docker ps
-  become_user: ubuntu
+  command: sudo -u ubuntu docker ps
   register: docker_ps
   changed_when: false
 
@@ -106,19 +102,17 @@
 
 - name: Restart containers for SSL and routing stability
   shell: |
-    docker compose restart
+    sudo -u ubuntu docker compose restart
     sleep 60
   args:
     chdir: /home/ubuntu/todoapp
-  become_user: ubuntu
   ignore_errors: yes
 
 - name: Final health check
   shell: |
     echo "Final service check..."
-    docker compose ps
+    sudo -u ubuntu docker compose ps
     curl -I https://{{ domain }} --max-time 10 --insecure || echo "Domain check completed"
   args:
     chdir: /home/ubuntu/todoapp
-  become_user: ubuntu
   ignore_errors: yes
