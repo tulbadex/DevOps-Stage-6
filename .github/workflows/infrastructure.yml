@@ -63,7 +63,11 @@ jobs:
           mv backend.tf backend.tf.disabled
           # Initialize without backend
           terraform init -input=false
-          # Apply to create S3 bucket
+          
+          # Try to import existing bucket first
+          terraform import aws_s3_bucket.terraform_state hng13-stage6-terraform-state || echo "Bucket doesn't exist, will create"
+          
+          # Apply to create/configure S3 bucket
           terraform apply -target=aws_s3_bucket.terraform_state -target=aws_s3_bucket_versioning.terraform_state -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state -auto-approve
 
       - name: Configure S3 backend
