@@ -34,6 +34,7 @@
     git pull origin {{ github_branch }}
   become_user: ubuntu
   when: git_repo.stat.exists
+  register: force_git_pull
   ignore_errors: yes
 
 - name: Create .env file from template
@@ -86,18 +87,16 @@
     curl "https://www.duckdns.org/update?domains={{ domain }}&token={{ duckdns_token }}&ip={{ ansible_host }}"
   failed_when: false
 
-- name: Stop existing containers if changes detected
+- name: Stop existing containers
   shell: sudo -u ubuntu docker compose down
   args:
     chdir: /home/ubuntu/todoapp
-  when: git_pull.changed or env_file.changed
   ignore_errors: yes
 
-- name: Pull latest Docker images if changes detected
+- name: Pull latest Docker images
   shell: sudo -u ubuntu docker compose pull
   args:
     chdir: /home/ubuntu/todoapp
-  when: git_pull.changed or env_file.changed
   ignore_errors: yes
 
 - name: Create docker network
