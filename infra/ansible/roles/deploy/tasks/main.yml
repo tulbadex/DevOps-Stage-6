@@ -26,6 +26,16 @@
   register: git_pull
   when: git_repo.stat.exists
 
+- name: Force git pull to ensure latest changes
+  shell: |
+    cd /home/ubuntu/todoapp
+    git fetch --all
+    git reset --hard origin/{{ github_branch }}
+    git pull origin {{ github_branch }}
+  become_user: ubuntu
+  when: git_repo.stat.exists
+  ignore_errors: yes
+
 - name: Create .env file from template
   template:
     src: ../../templates/.env.j2
@@ -57,6 +67,20 @@
     mode: '0600'
   when: not acme_json.stat.exists
 
+- name: Wait for domain to resolve
+  shell: |
+    echo "Waiting for domain {{ domain }} to resolve to {{ ansible_host }}..."
+    for i in {1..30}; do
+      RESOLVED_IP=$(dig +short {{ domain }} | tail -n1)
+      if [ "$RESOLVED_IP" = "{{ ansible_host }}" ]; then
+        echo "Domain resolved correctly!"
+        break
+      fi
+      echo "Attempt $i/30: Domain resolves to $RESOLVED_IP, expected {{ ansible_host }}"
+      sleep 10
+    done
+  ignore_errors: yes
+
 - name: Update DuckDNS with server IP
   shell: |
     curl "https://www.duckdns.org/update?domains={{ domain }}&token={{ duckdns_token }}&ip={{ ansible_host }}"
@@ -82,7 +106,7 @@
   ignore_errors: yes
 
 - name: Build and start Docker Compose services
-  shell: sudo -u ubuntu docker compose up -d --build
+  shell: sudo -u ubuntu docker compose up -d --build --force-recreate
   args:
     chdir: /home/ubuntu/todoapp
   register: compose_result
@@ -108,11 +132,35 @@
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
 
+- name: Wait for SSL certificate generation
+  shell: |
+    echo "Waiting for SSL certificate generation..."
+    for i in {1..60}; do
+      if curl -I https://{{ domain }} --max-time 10 --connect-timeout 5 2>/dev/null | grep -q "HTTP/"; then
+        echo "SSL certificate is working!"
+        break
+      fi
+      echo "Attempt $i/60: Waiting for SSL certificate..."
+      sleep 10
+    done
+  ignore_errors: yes
+
+- name: Check Traefik logs for SSL issues
+  shell: |
+    echo "Checking Traefik logs for SSL certificate issues..."
+    sudo -u ubuntu docker logs traefik --tail 20 | grep -i "acme\|certificate\|error" || echo "No SSL-related logs found"
+  args:
+    chdir: /home/ubuntu/todoapp
+  ignore_errors: yes
+
 - name: Final health check
   shell: |
     echo "Final service check..."
     sudo -u ubuntu docker compose ps
-    curl -I https://{{ domain }} --max-time 10 --insecure || echo "Domain check completed"
+    echo "Testing HTTPS connection..."
+    curl -I https://{{ domain }} --max-time 10 || echo "HTTPS not ready yet"
+    echo "Testing HTTP connection..."
+    curl -I http://{{ domain }} --max-time 10 || echo "HTTP not ready yet"
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
