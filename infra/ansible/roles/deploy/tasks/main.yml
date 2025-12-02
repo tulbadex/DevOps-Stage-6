@@ -197,29 +197,38 @@
   ignore_errors: yes
   tags: [deploy]
 
-- name: Only clean certificates if DNS is properly propagated and no valid cert exists
+- name: Check existing certificates and preserve them
   shell: |
-    if [ ! -f /home/ubuntu/todoapp/letsencrypt/acme-staging.json ] && [ "{{ dns_check.rc }}" = "0" ]; then
-      echo "No existing certificate and DNS is propagated, allowing new certificate generation"
-      sudo -u ubuntu docker compose restart traefik
+    if [ -f /home/ubuntu/todoapp/letsencrypt/acme-staging.json ] && [ -s /home/ubuntu/todoapp/letsencrypt/acme-staging.json ]; then
+      echo "Valid staging certificate exists, preserving it"
+      echo "Certificate file size: $(stat -c%s /home/ubuntu/todoapp/letsencrypt/acme-staging.json) bytes"
+    elif [ -f /home/ubuntu/todoapp/letsencrypt/acme.json ] && [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ]; then
+      echo "Valid production certificate exists, preserving it"
+      echo "Certificate file size: $(stat -c%s /home/ubuntu/todoapp/letsencrypt/acme.json) bytes"
     else
-      echo "Keeping existing certificates or DNS not propagated, skipping certificate regeneration"
+      echo "No valid certificates found, will allow new generation"
+      # Only restart Traefik if no certificates exist
+      sudo -u ubuntu docker compose restart traefik
     fi
   args:
     chdir: /home/ubuntu/todoapp
+  register: cert_status
   ignore_errors: yes
   tags: [deploy]
 
-- name: Trigger SSL certificate generation if needed
+- name: Display certificate status
+  debug:
+    var: cert_status.stdout_lines
+  tags: [deploy]
+
+- name: Test SSL certificate without regeneration
   shell: |
-    # Check if SSL certificate exists and is valid
-    if ! curl -I https://{{ domain }} --max-time 5 --connect-timeout 3 2>/dev/null | grep -q "HTTP/2 200\|HTTP/1.1 200"; then
-      echo "SSL certificate not working, triggering regeneration..."
-      sudo -u ubuntu docker exec traefik rm -f /letsencrypt/acme.json
-      sudo -u ubuntu docker compose restart traefik
-      sleep 60
-    else
+    echo "Testing SSL certificate for {{ domain }}..."
+    if curl -I https://{{ domain }} --max-time 10 --connect-timeout 5 2>/dev/null | grep -q "HTTP/"; then
       echo "SSL certificate is working properly"
+    else
+      echo "SSL certificate not yet working, but preserving existing certificates"
+      echo "Certificate generation may take a few minutes on first deployment"
     fi
   args:
     chdir: /home/ubuntu/todoapp
