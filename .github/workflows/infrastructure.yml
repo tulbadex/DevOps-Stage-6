@@ -56,8 +56,29 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ./ssh-key.pem
           chmod 600 ./ssh-key.pem
 
-      - name: Terraform Init
-        run: terraform -chdir=infra/terraform init -input=false
+      - name: Create S3 bucket first (without backend)
+        run: |
+          cd infra/terraform
+          # Initialize without backend first
+          terraform init -input=false
+          # Apply to create S3 bucket
+          terraform apply -target=aws_s3_bucket.terraform_state -target=aws_s3_bucket_versioning.terraform_state -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state -auto-approve
+
+      - name: Configure S3 backend
+        run: |
+          cd infra/terraform
+          # Uncomment S3 backend configuration
+          sed -i 's/^# terraform {/terraform {/' main.tf
+          sed -i 's/^#   backend "s3"/  backend "s3"/' main.tf
+          sed -i 's/^#     bucket/    bucket/' main.tf
+          sed -i 's/^#     key/    key/' main.tf
+          sed -i 's/^#     region/    region/' main.tf
+          sed -i 's/^# }/}/' main.tf
+          
+      - name: Terraform Init with S3 backend
+        run: |
+          cd infra/terraform
+          terraform init -force-copy -input=false
 
       - name: Terraform Plan (Drift Detection)
         id: plan

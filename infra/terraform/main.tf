@@ -1,10 +1,10 @@
-terraform {
-  backend "s3" {
-    bucket = "hng13-stage6-terraform-state"
-    key    = "terraform.tfstate"
-    region = "us-east-2"
-  }
-}
+# terraform {
+#   backend "s3" {
+#     bucket = "hng13-stage6-terraform-state"
+#     key    = "terraform.tfstate"
+#     region = "us-east-2"
+#   }
+# }
 
 provider "aws" {
   region = var.aws_region
@@ -18,35 +18,21 @@ provider "aws" {
   }
 }
 
-# Check if S3 bucket exists
-data "aws_s3_bucket" "existing_state_bucket" {
-  bucket = "hng13-stage6-terraform-state"
-  count  = 1
-}
-
-# Create S3 bucket only if it doesn't exist
+# S3 bucket for Terraform state
 resource "aws_s3_bucket" "terraform_state" {
-  count         = length(try(data.aws_s3_bucket.existing_state_bucket, [])) == 0 ? 1 : 0
   bucket        = "hng13-stage6-terraform-state"
   force_destroy = true
 }
 
-# Use existing bucket if available, otherwise use created one
-locals {
-  state_bucket_id = length(data.aws_s3_bucket.existing_state_bucket) > 0 ? data.aws_s3_bucket.existing_state_bucket[0].id : aws_s3_bucket.terraform_state[0].id
-}
-
 resource "aws_s3_bucket_versioning" "terraform_state" {
-  count  = length(aws_s3_bucket.terraform_state)
-  bucket = local.state_bucket_id
+  bucket = aws_s3_bucket.terraform_state.id
   versioning_configuration {
     status = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
-  count  = length(aws_s3_bucket.terraform_state)
-  bucket = local.state_bucket_id
+  bucket = aws_s3_bucket.terraform_state.id
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
