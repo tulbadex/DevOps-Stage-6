@@ -318,7 +318,7 @@ jobs:
         if: steps.apply.outputs.server_ip != ''
         run: |
           cd infra/ansible
-          ansible-playbook -i inventory playbook.yml -v
+          ansible-playbook -i inventory playbook.yml -v --extra-vars "duckdns_token=${{ secrets.DUCKDNS_TOKEN }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
 

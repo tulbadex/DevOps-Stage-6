@@ -305,7 +305,7 @@ jobs:
       - name: Deploy application
         run: |
           cd infra/ansible
-          ansible-playbook -i inventory playbook.yml -v --tags deploy
+          ansible-playbook -i inventory playbook.yml -v --tags deploy --extra-vars "duckdns_token=${{ secrets.DUCKDNS_TOKEN }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
 
