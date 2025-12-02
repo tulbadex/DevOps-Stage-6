@@ -59,7 +59,9 @@ jobs:
       - name: Create S3 bucket first (without backend)
         run: |
           cd infra/terraform
-          # Initialize without backend first
+          # Temporarily rename backend.tf to disable S3 backend
+          mv backend.tf backend.tf.disabled
+          # Initialize without backend
           terraform init -input=false
           # Apply to create S3 bucket
           terraform apply -target=aws_s3_bucket.terraform_state -target=aws_s3_bucket_versioning.terraform_state -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state -auto-approve
@@ -67,13 +69,8 @@ jobs:
       - name: Configure S3 backend
         run: |
           cd infra/terraform
-          # Uncomment S3 backend configuration
-          sed -i 's/^# terraform {/terraform {/' main.tf
-          sed -i 's/^#   backend "s3"/  backend "s3"/' main.tf
-          sed -i 's/^#     bucket/    bucket/' main.tf
-          sed -i 's/^#     key/    key/' main.tf
-          sed -i 's/^#     region/    region/' main.tf
-          sed -i 's/^# }/}/' main.tf
+          # Restore backend configuration
+          mv backend.tf.disabled backend.tf
           
       - name: Terraform Init with S3 backend
         run: |

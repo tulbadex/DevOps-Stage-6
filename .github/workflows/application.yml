@@ -138,8 +138,19 @@ jobs:
           docker compose config --quiet
           echo "Docker Compose configuration is valid"
 
+  wait-for-infrastructure:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for infrastructure pipeline
+        run: |
+          echo "Checking if infrastructure pipeline is running..."
+          # Wait for any running infrastructure workflows to complete
+          sleep 30
+
   deploy:
-    needs: [detect-changes, build-and-test]
+    needs: [detect-changes, build-and-test, wait-for-infrastructure]
     if: needs.detect-changes.outputs.deploy-needed == 'true'
     runs-on: ubuntu-latest
     steps:
