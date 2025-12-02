@@ -124,10 +124,26 @@
   debug:
     var: docker_ps.stdout_lines
 
-- name: Restart containers for SSL and routing stability
+- name: Restart Traefik for SSL certificate refresh
   shell: |
-    sudo -u ubuntu docker compose restart
-    sleep 60
+    echo "Restarting Traefik to refresh SSL certificates..."
+    sudo -u ubuntu docker compose restart traefik
+    sleep 30
+  args:
+    chdir: /home/ubuntu/todoapp
+  ignore_errors: yes
+
+- name: Trigger SSL certificate generation if needed
+  shell: |
+    # Check if SSL certificate exists and is valid
+    if ! curl -I https://{{ domain }} --max-time 5 --connect-timeout 3 2>/dev/null | grep -q "HTTP/2 200\|HTTP/1.1 200"; then
+      echo "SSL certificate not working, triggering regeneration..."
+      sudo -u ubuntu docker exec traefik rm -f /letsencrypt/acme.json
+      sudo -u ubuntu docker compose restart traefik
+      sleep 60
+    else
+      echo "SSL certificate is working properly"
+    fi
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
