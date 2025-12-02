@@ -13,6 +13,7 @@ services:
       - "--certificatesresolvers.letsencrypt-staging.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
       - "--certificatesresolvers.letsencrypt-staging.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt-staging.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt-staging.acme.preferredchain=ISRG Root X1"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
@@ -23,16 +24,14 @@ services:
       - "--accesslog=true"
       - "--log.level=INFO"
     dns:
+      - "127.0.0.53"
       - "8.8.8.8"
-      - "1.1.1.1"
     ports:
       - "80:80"
       - "443:443"
       - "8088:8080"
     env_file:
       - .env
-    extra_hosts:
-      - "${DOMAIN}:127.0.0.1"
     volumes:
       - ./letsencrypt:/letsencrypt:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro

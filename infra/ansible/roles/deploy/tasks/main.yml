@@ -174,13 +174,37 @@
   debug:
     var: docker_ps.stdout_lines
 
-- name: Clean old certificates and restart Traefik
+- name: Check if SSL certificates already exist
+  stat:
+    path: /home/ubuntu/todoapp/letsencrypt/acme-staging.json
+  register: ssl_cert_exists
+  tags: [deploy]
+
+- name: Verify DNS propagation before SSL certificate generation
   shell: |
-    echo "Cleaning old certificates to avoid rate limit issues..."
-    sudo -u ubuntu docker compose down traefik
-    rm -f /home/ubuntu/todoapp/letsencrypt/acme*.json
-    sudo -u ubuntu docker compose up -d traefik
-    sleep 45
+    echo "Verifying DNS propagation for {{ domain }}..."
+    for i in {1..10}; do
+      RESOLVED_IP=$(dig +short {{ domain }} @8.8.8.8 2>/dev/null | tail -n1)
+      if [ "$RESOLVED_IP" = "{{ ansible_host }}" ]; then
+        echo "DNS propagation verified: {{ domain }} -> {{ ansible_host }}"
+        exit 0
+      fi
+      echo "Attempt $i/10: DNS resolves to $RESOLVED_IP, expected {{ ansible_host }}"
+      sleep 10
+    done
+    echo "DNS propagation incomplete, but continuing..."
+  register: dns_check
+  ignore_errors: yes
+  tags: [deploy]
+
+- name: Only clean certificates if DNS is properly propagated and no valid cert exists
+  shell: |
+    if [ ! -f /home/ubuntu/todoapp/letsencrypt/acme-staging.json ] && [ "{{ dns_check.rc }}" = "0" ]; then
+      echo "No existing certificate and DNS is propagated, allowing new certificate generation"
+      sudo -u ubuntu docker compose restart traefik
+    else
+      echo "Keeping existing certificates or DNS not propagated, skipping certificate regeneration"
+    fi
   args:
     chdir: /home/ubuntu/todoapp
   ignore_errors: yes
