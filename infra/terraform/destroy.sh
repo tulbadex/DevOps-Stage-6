@@ -81,6 +81,21 @@ if terraform destroy -auto-approve; then
     echo "✅ Destroy completed with local backend!"
 else
     echo "❌ Destroy failed even with local backend"
+    echo "Attempting manual S3 bucket cleanup..."
+    
+    # Empty S3 bucket completely (including versions)
+    echo "🗑️ Emptying S3 bucket versions and delete markers..."
+    aws s3api list-object-versions --bucket hng13-stage6-terraform-state --query 'Versions[].{Key: Key, VersionId: VersionId}' --output json | jq -r '.[] | "--key \(.Key) --version-id \(.VersionId)"' | while read -r args; do
+        aws s3api delete-object --bucket hng13-stage6-terraform-state $args 2>/dev/null || true
+    done
+    
+    aws s3api list-object-versions --bucket hng13-stage6-terraform-state --query 'DeleteMarkers[].{Key: Key, VersionId: VersionId}' --output json | jq -r '.[] | "--key \(.Key) --version-id \(.VersionId)"' | while read -r args; do
+        aws s3api delete-object --bucket hng13-stage6-terraform-state $args 2>/dev/null || true
+    done
+    
+    # Try to delete bucket after emptying
+    aws s3 rb s3://hng13-stage6-terraform-state --force 2>/dev/null || echo "Bucket deletion failed - may need manual cleanup"
+    
     echo "Manual cleanup may be required"
     echo "Check AWS console for remaining resources:"
     echo "- EC2 instances with tag Name=hng-stage6-web-server"
