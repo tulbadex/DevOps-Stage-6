@@ -210,6 +210,7 @@ jobs:
     needs: [detect-changes, build-and-test, wait-for-infrastructure]
     if: needs.detect-changes.outputs.deploy-needed == 'true'
     runs-on: ubuntu-latest
+    continue-on-error: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -227,39 +228,46 @@ jobs:
           terraform_version: 1.9.8
           terraform_wrapper: false
 
-      - name: Get server IP from infrastructure
-        id: server
+      - name: Check if infrastructure exists
+        id: infra_check
         run: |
           cd infra/terraform
           
-          # Initialize terraform with retries
-          for i in {1..3}; do
-            if terraform init -input=false; then
-              break
-            fi
-            echo "Terraform init failed (attempt $i/3). Retrying in 10 seconds..."
-            sleep 10
-          done
+          # Check if S3 backend exists
+          if ! aws s3api head-bucket --bucket "hng13-stage6-terraform-state" 2>/dev/null; then
+            echo "infrastructure_exists=false" >> $GITHUB_OUTPUT
+            echo "S3 backend bucket does not exist - infrastructure not deployed"
+            exit 0
+          fi
           
-          # Check if state has any resources with retries
-          for i in {1..5}; do
-            INSTANCE_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_instance" || echo "0")
-            if [ "$INSTANCE_COUNT" -gt "0" ]; then
-              break
-            fi
-            echo "No instances found in state (attempt $i/5). Waiting for state sync..."
-            sleep 15
-          done
+          # Initialize terraform
+          if ! terraform init -input=false 2>/dev/null; then
+            echo "infrastructure_exists=false" >> $GITHUB_OUTPUT
+            echo "Terraform init failed - infrastructure may not be deployed"
+            exit 0
+          fi
+          
+          # Check if any instances exist in state
+          INSTANCE_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_instance" || echo "0")
           
           if [ "$INSTANCE_COUNT" -eq "0" ]; then
-            echo "No EC2 instance found in terraform state after waiting."
-            echo "Infrastructure may not be deployed yet. Please run infrastructure pipeline first."
-            exit 1
+            echo "infrastructure_exists=false" >> $GITHUB_OUTPUT
+            echo "No EC2 instances found in terraform state"
+            exit 0
           fi
+          
+          echo "infrastructure_exists=true" >> $GITHUB_OUTPUT
+          echo "Infrastructure exists - proceeding with deployment"
+
+      - name: Get server IP from infrastructure
+        id: server
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
+        run: |
+          cd infra/terraform
           
           # Get server IP with multiple attempts
           for i in {1..3}; do
-            SERVER_IP=$(terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
+            SERVER_IP=$(terraform output -raw instance_public_ip 2>/dev/null || terraform output -raw instance_ip 2>/dev/null || terraform output -raw public_ip 2>/dev/null || echo "")
             
             if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" != "null" ] && [ "$SERVER_IP" != "" ]; then
               echo "server_ip=$SERVER_IP" >> $GITHUB_OUTPUT
@@ -277,17 +285,106 @@ jobs:
             exit 1
           fi
 
+      - name: Infrastructure not ready - Send notification
+        if: steps.infra_check.outputs.infrastructure_exists == 'false'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ vars.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '⚠️ Application Deployment Skipped - Infrastructure Not Ready'
+          to: ${{ vars.EMAIL_ALERT }}
+          from: 'DevOps Pipeline <${{ vars.SMTP_USERNAME }}>'
+          html_body: |
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #ff9800; border-bottom: 2px solid #ff9800; padding-bottom: 10px;">⚠️ Application Deployment Skipped</h2>
+                
+                <div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffcc02;">
+                  <p><strong>Project:</strong> HNG13 Stage 6 DevOps</p>
+                  <p><strong>Status:</strong> Infrastructure not ready</p>
+                  <p><strong>Action Required:</strong> Deploy infrastructure first</p>
+                </div>
+                
+                <h3 style="color: #d73a49;">What happened:</h3>
+                <p>The application deployment pipeline was triggered, but the required infrastructure has not been deployed yet.</p>
+                
+                <h3 style="color: #0366d6;">Required Steps:</h3>
+                <ol>
+                  <li><strong>Deploy Infrastructure First:</strong>
+                    <ul>
+                      <li>Run the Infrastructure Pipeline</li>
+                      <li>Wait for it to complete successfully</li>
+                      <li>This creates the EC2 instance and basic setup</li>
+                    </ul>
+                  </li>
+                  <li><strong>Then Deploy Application:</strong>
+                    <ul>
+                      <li>Re-run this Application Pipeline</li>
+                      <li>Or push new application code changes</li>
+                      <li>This will deploy Docker services and SSL</li>
+                    </ul>
+                  </li>
+                </ol>
+                
+                <h3 style="color: #0366d6;">Infrastructure Pipeline Creates:</h3>
+                <ul>
+                  <li>🖥️ EC2 instance (t3.medium)</li>
+                  <li>🔒 Security groups and networking</li>
+                  <li>🗄 S3 backend for Terraform state</li>
+                  <li>⚙️ Basic server configuration</li>
+                </ul>
+                
+                <h3 style="color: #0366d6;">Application Pipeline Deploys:</h3>
+                <ul>
+                  <li>🐳 Docker containers and services</li>
+                  <li>🌐 Traefik reverse proxy</li>
+                  <li>🔒 SSL certificates via Let's Encrypt</li>
+                  <li>📦 Application code and configuration</li>
+                </ul>
+                
+                <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #fff3e0; border-radius: 5px;">
+                  <p style="font-size: 18px; font-weight: bold; color: #e65100;">Deploy infrastructure first, then retry application deployment.</p>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 30px 0;">
+                <p style="font-size: 12px; color: #6a737d; text-align: center;">
+                  <em>Automated pipeline notification</em>
+                </p>
+              </div>
+            </body>
+            </html>
+
+      - name: Infrastructure not ready - Skip deployment
+        if: steps.infra_check.outputs.infrastructure_exists == 'false'
+        run: |
+          echo "⚠️ Infrastructure has not been deployed yet!"
+          echo ""
+          echo "This is expected for new deployments. To resolve:"
+          echo "1. 🏗️ Run the Infrastructure Pipeline first"
+          echo "2. ⏳ Wait for infrastructure deployment to complete"
+          echo "3. 🚀 Then re-run this Application Pipeline"
+          echo ""
+          echo "The deployment has been skipped gracefully."
+          echo "No errors occurred - this is normal workflow behavior."
+          exit 0
+
       - name: Create SSH key file
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ./ssh-key.pem
           chmod 600 ./ssh-key.pem
 
       - name: Install Ansible
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
         run: |
           pip install ansible-core==2.17.5
           ansible-galaxy collection install community.docker
 
       - name: Create Ansible inventory
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
         run: |
           mkdir -p infra/ansible
           cat > infra/ansible/inventory << EOF
@@ -303,6 +400,7 @@ jobs:
           EOF
 
       - name: Deploy application
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
         run: |
           cd infra/ansible
           ansible-playbook -i inventory playbook.yml -v --tags deploy --extra-vars "duckdns_token=${{ secrets.DUCKDNS_TOKEN }}"
@@ -310,6 +408,7 @@ jobs:
           ANSIBLE_HOST_KEY_CHECKING: False
 
       - name: Verify deployment
+        if: steps.infra_check.outputs.infrastructure_exists == 'true'
         run: |
           echo "Waiting for services to start..."
           sleep 30
@@ -451,6 +550,39 @@ jobs:
               </div>
             </body>
             </html>
+
+  infrastructure-not-ready:
+    needs: [detect-changes, build-and-test, wait-for-infrastructure]
+    if: needs.detect-changes.outputs.deploy-needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check infrastructure status
+        id: infra_status
+        run: |
+          # Quick check if infrastructure exists
+          if ! aws s3api head-bucket --bucket "hng13-stage6-terraform-state" 2>/dev/null; then
+            echo "infrastructure_ready=false" >> $GITHUB_OUTPUT
+            echo "Infrastructure not deployed - S3 backend missing"
+          else
+            echo "infrastructure_ready=true" >> $GITHUB_OUTPUT
+            echo "Infrastructure appears to be deployed"
+          fi
+
+      - name: Skip deployment notification
+        if: steps.infra_status.outputs.infrastructure_ready == 'false'
+        run: |
+          echo "ℹ️ Application deployment skipped - Infrastructure not ready"
+          echo "This is normal for new deployments. Deploy infrastructure first."
 
   no-changes:
     needs: detect-changes

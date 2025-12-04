@@ -279,48 +279,18 @@ jobs:
             echo "Warning: Could not retrieve server IP"
           fi
 
-      - name: Generate Ansible Inventory
+      - name: Infrastructure Summary
         if: steps.apply.outputs.server_ip != ''
         run: |
-          mkdir -p infra/ansible
-          cat > infra/ansible/inventory << EOF
-          [app_servers]
-          ${{ steps.apply.outputs.server_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=../../ssh-key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-          
-          [app_servers:vars]
-          domain=${{ vars.DOMAIN }}
-          email=${{ vars.EMAIL_ALERT }}
-          duckdns_token=${{ secrets.DUCKDNS_TOKEN }}
-          github_repo=${{ github.server_url }}/${{ github.repository }}.git
-          github_branch=${{ github.ref_name }}
-          EOF
-
-      - name: Install Ansible
-        if: steps.apply.outputs.server_ip != ''
-        run: |
-          pip install ansible-core==2.17.5
-          ansible-galaxy collection install community.docker
-
-      - name: Wait for SSH to be ready
-        if: steps.apply.outputs.server_ip != ''
-        run: |
-          echo "Waiting for SSH to be ready on ${{ steps.apply.outputs.server_ip }}..."
-          for i in {1..30}; do
-            if ssh -i ./ssh-key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@${{ steps.apply.outputs.server_ip }} echo "SSH Ready"; then
-              echo "SSH is ready!"
-              break
-            fi
-            echo "Attempt $i/30 failed, waiting 10 seconds..."
-            sleep 10
-          done
-
-      - name: Run Ansible Deployment
-        if: steps.apply.outputs.server_ip != ''
-        run: |
-          cd infra/ansible
-          ansible-playbook -i inventory playbook.yml -v --extra-vars "duckdns_token=${{ secrets.DUCKDNS_TOKEN }}"
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: False
+          echo "Infrastructure deployment completed successfully!"
+          echo "Server IP: ${{ steps.apply.outputs.server_ip }}"
+          echo "Domain: ${{ vars.DOMAIN }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Run the Application Deployment pipeline to deploy services"
+          echo "2. Or push application code changes to trigger automatic deployment"
+          echo ""
+          echo "Infrastructure is ready for application deployment."
 
       - name: Send Success Notification
         if: success()
@@ -346,32 +316,31 @@ jobs:
                   <p><strong>Domain:</strong> <a href="https://${{ vars.DOMAIN }}">https://${{ vars.DOMAIN }}</a></p>
                 </div>
                 
-                <h3 style="color: #0366d6;">What was deployed:</h3>
+                <h3 style="color: #0366d6;">Infrastructure Created:</h3>
                 <ul>
-                  <li>Infrastructure provisioned with Terraform</li>
-                  <li>Server configured with Ansible</li>
-                  <li>Application deployed with Docker Compose</li>
-                  <li>SSL certificates configured</li>
-                  <li>Traefik reverse proxy setup</li>
+                  <li>✅ EC2 instance provisioned</li>
+                  <li>✅ Security groups configured</li>
+                  <li>✅ S3 backend for Terraform state</li>
+                  <li>✅ Server ready for application deployment</li>
                 </ul>
-                
-                <h3 style="color: #0366d6;">Access your application:</h3>
-                <div style="background-color: #f6f8fa; padding: 15px; border-radius: 5px;">
-                  <p>🌐 <strong>Frontend:</strong> <a href="https://${{ vars.DOMAIN }}">https://${{ vars.DOMAIN }}</a></p>
-                  <p>🔐 <strong>Auth API:</strong> <a href="https://${{ vars.DOMAIN }}/api/auth">https://${{ vars.DOMAIN }}/api/auth</a></p>
-                  <p>📝 <strong>Todos API:</strong> <a href="https://${{ vars.DOMAIN }}/api/todos">https://${{ vars.DOMAIN }}/api/todos</a></p>
-                  <p>👥 <strong>Users API:</strong> <a href="https://${{ vars.DOMAIN }}/api/users">https://${{ vars.DOMAIN }}/api/users</a></p>
-                </div>
                 
                 <h3 style="color: #0366d6;">Next Steps:</h3>
                 <ul>
-                  <li>Test your application functionality</li>
-                  <li>Monitor for any issues</li>
-                  <li>Check logs if needed: <code>docker logs &lt;container_name&gt;</code></li>
+                  <li>🚀 Run Application Deployment pipeline</li>
+                  <li>📝 Push application code changes to auto-deploy</li>
+                  <li>🔍 Monitor infrastructure for any issues</li>
                 </ul>
                 
+                <h3 style="color: #0366d6;">Server Details:</h3>
+                <div style="background-color: #f6f8fa; padding: 15px; border-radius: 5px;">
+                  <p>🖥️ <strong>Server IP:</strong> ${{ steps.apply.outputs.server_ip }}</p>
+                  <p>🌐 <strong>Domain:</strong> ${{ vars.DOMAIN }}</p>
+                  <p>🔑 <strong>SSH Access:</strong> ubuntu@${{ steps.apply.outputs.server_ip }}</p>
+                  <p>⚙️ <strong>Instance Type:</strong> t3.medium</p>
+                </div>
+                
                 <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #d4edda; border-radius: 5px;">
-                  <p style="font-size: 18px; font-weight: bold; color: #155724;">Deployment completed successfully! 🎉</p>
+                  <p style="font-size: 18px; font-weight: bold; color: #155724;">Infrastructure ready! Deploy your application next. 🏗️</p>
                 </div>
                 
                 <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 30px 0;">
