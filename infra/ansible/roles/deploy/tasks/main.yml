@@ -80,27 +80,13 @@
     var: env_contents.stdout_lines
   tags: [deploy]
 
-- name: Create letsencrypt directory
+- name: Create letsencrypt directory for Traefik
   file:
     path: /home/ubuntu/todoapp/letsencrypt
     state: directory
     owner: ubuntu
     group: ubuntu
     mode: '0755'
-
-- name: Check if acme.json exists
-  stat:
-    path: /home/ubuntu/todoapp/letsencrypt/acme.json
-  register: acme_json
-
-- name: Create acme.json if not exists
-  file:
-    path: /home/ubuntu/todoapp/letsencrypt/acme.json
-    state: touch
-    owner: ubuntu
-    group: ubuntu
-    mode: '0600'
-  when: not acme_json.stat.exists
 
 - name: Wait for domain to resolve
   shell: |
@@ -197,18 +183,13 @@
   ignore_errors: yes
   tags: [deploy]
 
-- name: Check existing certificates and preserve them
+- name: Check if certificates already exist
   shell: |
-    if [ -f /home/ubuntu/todoapp/letsencrypt/acme-staging.json ] && [ -s /home/ubuntu/todoapp/letsencrypt/acme-staging.json ]; then
-      echo "Valid staging certificate exists, preserving it"
-      echo "Certificate file size: $(stat -c%s /home/ubuntu/todoapp/letsencrypt/acme-staging.json) bytes"
-    elif [ -f /home/ubuntu/todoapp/letsencrypt/acme.json ] && [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ]; then
-      echo "Valid production certificate exists, preserving it"
+    if [ -f /home/ubuntu/todoapp/letsencrypt/acme.json ] && [ -s /home/ubuntu/todoapp/letsencrypt/acme.json ]; then
+      echo "Production certificates exist - Traefik will use them"
       echo "Certificate file size: $(stat -c%s /home/ubuntu/todoapp/letsencrypt/acme.json) bytes"
     else
-      echo "No valid certificates found, will allow new generation"
-      # Only restart Traefik if no certificates exist
-      sudo -u ubuntu docker compose restart traefik
+      echo "No certificates found - Traefik will generate them automatically via ACME"
     fi
   args:
     chdir: /home/ubuntu/todoapp
@@ -221,38 +202,11 @@
     var: cert_status.stdout_lines
   tags: [deploy]
 
-- name: Test SSL certificate without regeneration
+- name: Wait for Traefik to start and begin ACME process
   shell: |
-    echo "Testing SSL certificate for {{ domain }}..."
-    if curl -I https://{{ domain }} --max-time 10 --connect-timeout 5 2>/dev/null | grep -q "HTTP/"; then
-      echo "SSL certificate is working properly"
-    else
-      echo "SSL certificate not yet working, but preserving existing certificates"
-      echo "Certificate generation may take a few minutes on first deployment"
-    fi
-  args:
-    chdir: /home/ubuntu/todoapp
-  ignore_errors: yes
-
-- name: Wait for SSL certificate generation
-  shell: |
-    echo "Waiting for SSL certificate generation..."
-    for i in {1..60}; do
-      if curl -I https://{{ domain }} --max-time 10 --connect-timeout 5 2>/dev/null | grep -q "HTTP/"; then
-        echo "SSL certificate is working!"
-        break
-      fi
-      echo "Attempt $i/60: Waiting for SSL certificate..."
-      sleep 10
-    done
-  ignore_errors: yes
-
-- name: Check Traefik logs for SSL issues
-  shell: |
-    echo "Checking Traefik logs for SSL certificate issues..."
-    sudo -u ubuntu docker logs traefik --tail 20 | grep -i "acme\|certificate\|error" || echo "No SSL-related logs found"
-  args:
-    chdir: /home/ubuntu/todoapp
+    echo "Waiting for Traefik to initialize ACME certificate generation..."
+    sleep 30
+    echo "Traefik will automatically handle SSL certificate generation via ACME"
   ignore_errors: yes
 
 - name: Final health check
