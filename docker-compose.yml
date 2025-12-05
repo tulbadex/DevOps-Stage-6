@@ -43,8 +43,11 @@ services:
       - "traefik.http.middlewares.cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
       - "traefik.http.middlewares.cors.headers.accesscontrolmaxage=1800"
       - "traefik.http.middlewares.cors.headers.addvaryheader=true"
+      - "traefik.http.middlewares.global-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.global-redirect.redirectscheme.permanent=true"
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=global-redirect"
       - "traefik.http.routers.http-catchall.priority=1"
     networks:
       - app-network
